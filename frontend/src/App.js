@@ -1,13 +1,17 @@
-import logo from './logo.svg';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import LoginPage from './LoginPage';
+import MainPage from './MainPage';
 import './App.css';
 
 function App() {
   return (
-    <div className="App">
-      <h1 className="text-3xl font-bold underline text-center text-blue-500">
-        Hello, Tailwind!
-      </h1>
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        <Route path="/research" element={<MainPage />} />
+      </Routes>
+    </Router>
   );
 }
 
