@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Header from './Header';
 import PromptInput from './PromptInput';
-
-// We will add other components like ResultsDisplay here later
+import ResultsDisplay from './ResultsDisplay';
 
 const MainPage = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [results, setResults] = useState(null);
+
   const handlePromptSubmit = async (prompt) => {
+    setIsLoading(true);
+    setResults(null); // Clear previous results
     console.log('Sending prompt to backend:', prompt);
 
     try {
@@ -19,8 +23,12 @@ const MainPage = () => {
 
       const data = await response.json();
       console.log('Received from backend:', data);
+      setResults(data);
     } catch (error) {
       console.error('Error submitting prompt:', error);
+      // Optionally, set an error state here
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -29,8 +37,12 @@ const MainPage = () => {
       <Header />
       <main className="container mx-auto p-4">
         <PromptInput onSubmit={handlePromptSubmit} />
+        <div className="mt-8">
+          <ResultsDisplay isLoading={isLoading} results={results} />
+        </div>
       </main>
     </div>
   );
 };
-export default MainPage; 
+
+export default MainPage;
