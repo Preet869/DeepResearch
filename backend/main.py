@@ -5,18 +5,16 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
-from anthropic import AsyncAnthropic
-import google.generativeai as genai
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from tavily import TavilyClient
 
 # Load environment variables
 load_dotenv()
 
 # --- Initialize Clients ---
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-anthropic_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
 supabase: Client = create_client(supabase_url, supabase_key)
@@ -50,37 +48,48 @@ async def generate_title(prompt: str):
     except Exception:
         return "New Research"
 
-# --- UPDATED AI Service Functions ---
-async def query_openai(history: List[Dict[str, str]]):
+async def get_search_context(query: str):
+    """Gets context from Tavily search."""
+    try:
+        # For this demo, we'll use a basic search.
+        # For a more advanced use case, you could use `tavily_client.search`.
+        response = tavily_client.get_search_context(query=query, search_depth="advanced")
+        return response
+    except Exception as e:
+        print(f"Error getting search context: {e}")
+        return f"Error getting search context: {e}"
+
+async def generate_deep_research_report(prompt: str, context: str):
+    """Generates a comprehensive report using OpenAI's GPT-4o and Tavily context."""
+    report_prompt = f"""
+You are an expert research analyst. Your goal is to provide a deep, comprehensive, and well-structured report based on the user's query and the provided web search context. The report should be so thorough that the user won't need to consult other sources like Google, YouTube, or Reddit.
+
+**User's Query:** "{prompt}"
+
+**Web Search Context:**
+---
+{context}
+---
+
+**Instructions:**
+1.  **Synthesize, Don't Just Summarize:** Do not just list the information from the context. Weave the key points into a coherent, well-structured narrative.
+2.  **Structure the Report:** Use markdown for clear headings, subheadings, bullet points, and bold text to organize the information logically. Start with a brief overview, then dive into detailed sections.
+3.  **Go Beyond the Obvious:** Analyze the information, identify underlying themes, and provide insights. If there are conflicting viewpoints in the context, present them.
+4.  **Maintain a Professional Tone:** Write in a clear, objective, and analytical style.
+
+**Final Report:**
+"""
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-3.5-turbo", messages=history, max_tokens=1500
+            model="gpt-4o",
+            messages=[{"role": "system", "content": report_prompt}],
+            max_tokens=4000,
+            temperature=0.4,
         )
         return response.choices[0].message.content
-    except Exception as e: return f"Error from OpenAI: {e}"
-
-async def query_claude(history: List[Dict[str, str]]):
-    system_prompt = "You are an expert research assistant."
-    user_messages = [msg for msg in history if msg['role'] != 'system']
-    try:
-        response = await anthropic_client.messages.create(
-            model="claude-3-haiku-20240307", max_tokens=1500, messages=user_messages, system=system_prompt
-        )
-        return response.content[0].text
-    except Exception as e: return f"Error from Anthropic: {e}"
-
-def sync_query_gemini(history: List[Dict[str, str]]):
-    gemini_history = [{'role': 'user' if msg['role'] == 'user' else 'model', 'parts': [msg['content']]} for msg in history[:-1]]
-    last_prompt = history[-1]['content']
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        chat = model.start_chat(history=gemini_history)
-        response = chat.send_message(last_prompt)
-        return response.text
-    except Exception as e: return f"Error from Gemini: {e}"
-
-async def query_gemini(history: List[Dict[str, str]]):
-    return await asyncio.to_thread(sync_query_gemini, history)
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        return f"Error from OpenAI while generating report: {e}"
 
 # --- API Endpoints ---
 @app.get("/")
@@ -120,38 +129,38 @@ async def run_research(request: ResearchRequest, authorization: str = Header(...
         access_token = authorization.split(" ")[1]
         user_response = supabase.auth.get_user(access_token)
         user = user_response.user
-        if not user: raise HTTPException(status_code=401, detail="Invalid token")
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
 
-        history = []
         convo_id = request.conversation_id
 
-        if convo_id:
-            convo_res = supabase.table("conversations").select("id").eq("id", convo_id).eq("user_id", user.id).execute()
-            if not convo_res.data:
-                raise HTTPException(status_code=404, detail="Conversation not found or access denied")
-
-            messages_res = supabase.table("messages").select("role, content").eq("conversation_id", convo_id).order("created_at").execute()
-            for msg in messages_res.data:
-                history.append({"role": msg["role"], "content": msg["content"]})
-        
-        history.append({"role": "user", "content": request.prompt})
-        
         if not convo_id:
             title = await generate_title(request.prompt)
             convo_res = supabase.table("conversations").insert({"user_id": user.id, "title": title}).execute()
             convo_id = convo_res.data[0]['id']
+        else:
+            convo_res = supabase.table("conversations").select("id").eq("id", convo_id).eq("user_id", user.id).execute()
+            if not convo_res.data:
+                raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
-        ai_tasks = [query_openai(history), query_claude(history), query_gemini(history)]
-        openai_res, claude_res, gemini_res = await asyncio.gather(*ai_tasks)
+        # Save user message first
+        supabase.table("messages").insert({
+            "conversation_id": convo_id,
+            "role": "user",
+            "content": request.prompt
+        }).execute()
 
-        messages_to_save = [
-            {"conversation_id": convo_id, "role": "user", "content": request.prompt},
-            {"conversation_id": convo_id, "role": "assistant", "model_name": "OpenAI", "content": openai_res},
-            {"conversation_id": convo_id, "role": "assistant", "model_name": "Claude", "content": claude_res},
-            {"conversation_id": convo_id, "role": "assistant", "model_name": "Gemini", "content": gemini_res}
-        ]
-        
-        message_res = supabase.table("messages").insert(messages_to_save).execute()
+        # Perform deep research
+        search_context = await get_search_context(request.prompt)
+        report = await generate_deep_research_report(request.prompt, search_context)
+
+        # Save the final report
+        message_res = supabase.table("messages").insert({
+            "conversation_id": convo_id,
+            "role": "assistant",
+            "model_name": "DeepResearch Report",
+            "content": report
+        }).execute()
 
         return {"conversation_id": convo_id, "new_messages": message_res.data}
 
