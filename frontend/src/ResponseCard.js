@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import ChartDisplay from './ChartDisplay';
 
 const ResponseCard = ({ message }) => {
   const isUser = message.role === 'user';
@@ -15,6 +16,11 @@ const ResponseCard = ({ message }) => {
           {message.content}
         </ReactMarkdown>
       </div>
+      
+      {/* Display chart if metadata contains graph_data */}
+      {!isUser && message.metadata && message.metadata.graph_data && (
+        <ChartDisplay graphData={message.metadata.graph_data} />
+      )}
     </div>
   );
 };
