@@ -1,18 +1,17 @@
 # Dependencies
-node_modules/
-/backend/venv/
-/backend/__pycache__/
+/node_modules
+/backend/venv
+/backend/__pycache__
+
+# Environment variables
+backend/.env
+frontend/.env
+
+# Build files
+/frontend/build
 *.pyc
 
-# Environment files
-.env
-.env.*
-!.env.example
-
-# Build outputs
-/build
-.DS_Store
-*.swo
-*.swp
-*.zip
-*.rar 
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log* 
