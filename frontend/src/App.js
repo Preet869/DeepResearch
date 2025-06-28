@@ -4,7 +4,6 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Dashboard from './Dashboard';
 import ResearchPage from './ResearchPage';
 import LoginPage from './LoginPage';
-import MyResearchPage from './MyResearchPage';
 import './App.css';
 
 const ProtectedRoute = ({ children }) => {
@@ -39,14 +38,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <ResearchPage />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/my-research" 
-            element={
-              <ProtectedRoute>
-                <MyResearchPage />
               </ProtectedRoute>
             } 
           />
