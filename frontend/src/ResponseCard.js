@@ -5,7 +5,6 @@ import ChartDisplay from './ChartDisplay';
 
 const ResponseCard = ({ message }) => {
   const isUser = message.role === 'user';
-  const [expandedSections, setExpandedSections] = useState({});
   const [copiedSection, setCopiedSection] = useState(null);
 
   if (isUser) {
@@ -110,12 +109,7 @@ const ResponseCard = ({ message }) => {
     return '📄';
   };
 
-  const toggleSection = (index) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [index]: !prev[index]
-    }));
-  };
+
 
   const copyToClipboard = async (text, sectionName) => {
     try {
@@ -269,56 +263,44 @@ const ResponseCard = ({ message }) => {
         <ChartDisplay graphData={message.metadata.graph_data} />
       )}
 
-      {/* Content Sections */}
-      <div className="space-y-4">
+      {/* Content Sections - Clean Display */}
+      <div className="space-y-6">
         {sections.filter(s => s.type === 'section').map((section, index) => (
-          <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div 
-              className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => toggleSection(index)}
-            >
+          <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <span className="text-xl">{section.icon}</span>
-                <h3 className="text-lg font-semibold text-gray-900">{section.title}</h3>
+                <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <span className="text-xl">{section.icon}</span>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">{section.title}</h3>
               </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    copyToClipboard(section.content.join('\n'), section.title);
-                  }}
-                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {copiedSection === section.title ? (
+              <button
+                onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
+                className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {copiedSection === section.title ? (
+                  <>
                     <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                  ) : (
+                    <span className="text-green-600">Copied!</span>
+                  </>
+                ) : (
+                  <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                  )}
-                </button>
-                <svg 
-                  className={`w-5 h-5 text-gray-400 transition-transform ${expandedSections[index] ? 'rotate-180' : ''}`}
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
             </div>
             
-            {expandedSections[index] && (
-              <div className="px-6 pb-6 border-t border-gray-100">
-                <div className="prose prose-sm max-w-none pt-4">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {section.content.join('\n')}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            )}
+            <div className="prose prose-lg max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {section.content.join('\n')}
+              </ReactMarkdown>
+            </div>
           </div>
         ))}
       </div>
