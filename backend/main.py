@@ -35,6 +35,19 @@ app.add_middleware(
 class ResearchRequest(BaseModel):
     prompt: str
     conversation_id: Optional[int] = None
+    folder_id: Optional[int] = None
+
+class FolderCreate(BaseModel):
+    name: str
+    color: str = "#3B82F6"
+
+class FolderUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+class ConversationMove(BaseModel):
+    conversation_id: int
+    folder_id: Optional[int] = None
 
 # --- Helper Functions ---
 async def get_user_from_token(access_token: str):
@@ -254,16 +267,151 @@ Remember: The graph_data block is MANDATORY. Find or create meaningful data to v
 async def root():
     return {"message": "Hello World"}
 
+# --- Folder Endpoints ---
+@app.get("/folders")
+async def get_folders(authorization: str = Header(...)):
+    """Fetches all folders for the logged-in user with conversation counts."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Get folders with conversation counts
+        folders_query = supabase.table("folders").select("*").eq("user_id", user.id).order("created_at", desc=False)
+        folders_response = folders_query.execute()
+        
+        folders_with_counts = []
+        for folder in folders_response.data:
+            # Count conversations in this folder
+            count_query = supabase.table("conversations").select("id", count="exact").eq("user_id", user.id).eq("folder_id", folder["id"])
+            count_response = count_query.execute()
+            
+            folder_with_count = {
+                **folder,
+                "conversation_count": count_response.count or 0
+            }
+            folders_with_counts.append(folder_with_count)
+        
+        return folders_with_counts
+    except Exception as e:
+        print(f"Error in get_folders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/folders")
+async def create_folder(folder: FolderCreate, authorization: str = Header(...)):
+    """Creates a new folder for the logged-in user."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        folder_data = {
+            "user_id": user.id,
+            "name": folder.name,
+            "color": folder.color
+        }
+        
+        response = supabase.table("folders").insert(folder_data).execute()
+        return response.data[0]
+    except Exception as e:
+        print(f"Error in create_folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/folders/{folder_id}")
+async def update_folder(folder_id: int, folder: FolderUpdate, authorization: str = Header(...)):
+    """Updates a folder for the logged-in user."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Check if folder belongs to user
+        folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+        if not folder_check.data:
+            raise HTTPException(status_code=404, detail="Folder not found or access denied")
+        
+        update_data = {}
+        if folder.name is not None:
+            update_data["name"] = folder.name
+        if folder.color is not None:
+            update_data["color"] = folder.color
+        
+        response = supabase.table("folders").update(update_data).eq("id", folder_id).execute()
+        return response.data[0]
+    except Exception as e:
+        print(f"Error in update_folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/folders/{folder_id}")
+async def delete_folder(folder_id: int, authorization: str = Header(...)):
+    """Deletes a folder and moves all conversations to uncategorized."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Check if folder belongs to user
+        folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+        if not folder_check.data:
+            raise HTTPException(status_code=404, detail="Folder not found or access denied")
+        
+        # Move all conversations in this folder to uncategorized (folder_id = null)
+        supabase.table("conversations").update({"folder_id": None}).eq("folder_id", folder_id).eq("user_id", user.id).execute()
+        
+        # Delete the folder
+        response = supabase.table("folders").delete().eq("id", folder_id).execute()
+        return {"message": "Folder deleted successfully"}
+    except Exception as e:
+        print(f"Error in delete_folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/conversations/move")
+async def move_conversation(move_data: ConversationMove, authorization: str = Header(...)):
+    """Moves a conversation to a different folder."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Check if conversation belongs to user
+        convo_check = supabase.table("conversations").select("id").eq("id", move_data.conversation_id).eq("user_id", user.id).execute()
+        if not convo_check.data:
+            raise HTTPException(status_code=404, detail="Conversation not found or access denied")
+        
+        # If folder_id is provided, check if folder belongs to user
+        if move_data.folder_id is not None:
+            folder_check = supabase.table("folders").select("id").eq("id", move_data.folder_id).eq("user_id", user.id).execute()
+            if not folder_check.data:
+                raise HTTPException(status_code=404, detail="Folder not found or access denied")
+        
+        # Update conversation folder
+        response = supabase.table("conversations").update({"folder_id": move_data.folder_id}).eq("id", move_data.conversation_id).execute()
+        return response.data[0]
+    except Exception as e:
+        print(f"Error in move_conversation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/conversations")
-async def get_conversations(authorization: str = Header(...)):
-    """Fetches all conversations for the logged-in user."""
+async def get_conversations(folder_id: Optional[int] = None, authorization: str = Header(...)):
+    """Fetches conversations for the logged-in user, optionally filtered by folder."""
     try:
         access_token = authorization.split(" ")[1]
         user = await get_user_from_token(access_token)
         if not user: 
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        query = supabase.table("conversations").select("id, title, created_at").eq("user_id", user.id).order("created_at", desc=True)
+        # Build query with folder filter
+        query = supabase.table("conversations").select("id, title, created_at, folder_id").eq("user_id", user.id)
+        
+        if folder_id is not None:
+            query = query.eq("folder_id", folder_id)
+        
+        query = query.order("created_at", desc=True)
         response = query.execute()
         return response.data
     except Exception as e: 
@@ -303,7 +451,10 @@ async def run_research(request: ResearchRequest, authorization: str = Header(...
         
         if not convo_id:
             title = await generate_title(request.prompt)
-            convo_res = supabase.table("conversations").insert({"user_id": user.id, "title": title}).execute()
+            conversation_data = {"user_id": user.id, "title": title}
+            if request.folder_id:
+                conversation_data["folder_id"] = request.folder_id
+            convo_res = supabase.table("conversations").insert(conversation_data).execute()
             convo_id = convo_res.data[0]['id']
         else:
             convo_res = supabase.table("conversations").select("id").eq("id", convo_id).eq("user_id", user.id).execute()

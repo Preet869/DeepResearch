@@ -1,7 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
-import MainPage from './MainPage';
+import Dashboard from './Dashboard';
+import ResearchPage from './ResearchPage';
 import LoginPage from './LoginPage';
 import MyResearchPage from './MyResearchPage';
 import './App.css';
@@ -21,7 +22,23 @@ function App() {
             path="/" 
             element={
               <ProtectedRoute>
-                <MainPage />
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/research" 
+            element={
+              <ProtectedRoute>
+                <ResearchPage />
               </ProtectedRoute>
             } 
           />
