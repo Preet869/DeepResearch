@@ -262,6 +262,45 @@ Remember: The graph_data block is MANDATORY. Find or create meaningful data to v
         print(f"Error generating report: {e}")
         return f"Error from OpenAI while generating report: {e}"
 
+async def generate_smart_followups(research_content: str, original_prompt: str) -> List[str]:
+    """Generates intelligent follow-up questions based on the research content."""
+    try:
+        prompt = f"""Based on this research report about "{original_prompt}", generate 5 specific, insightful follow-up questions that would help the user dive deeper into important aspects of the topic.
+
+Research Report:
+{research_content[:2000]}...
+
+Requirements for follow-up questions:
+1. Be specific and reference actual content from the report
+2. Focus on different aspects: risks, implementation, comparisons, future outlook, policy implications
+3. Ask for deeper analysis, not just more information
+4. Each question should lead to actionable insights
+5. Vary the types of questions (comparative, analytical, predictive, evaluative)
+
+Format: Return only the 5 questions, one per line, without numbering or bullet points."""
+
+        response = await openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "system", "content": prompt}],
+            max_tokens=200,
+            temperature=0.7,
+        )
+        
+        questions = response.choices[0].message.content.strip().split('\n')
+        # Clean up and filter valid questions
+        questions = [q.strip() for q in questions if q.strip() and len(q.strip()) > 10]
+        return questions[:5]
+    except Exception as e:
+        print(f"Error generating follow-ups: {e}")
+        # Return default follow-ups if generation fails
+        return [
+            "What are the main risks and mitigation strategies?",
+            "How does this compare across different regions or markets?",
+            "What are the implementation challenges and solutions?",
+            "What's the 5-year outlook with specific milestones?",
+            "What are the policy implications and recommendations?"
+        ]
+
 # --- API Endpoints ---
 @app.get("/")
 async def root():
@@ -490,6 +529,10 @@ async def run_research(request: ResearchRequest, authorization: str = Header(...
             except (json.JSONDecodeError, IndexError) as e:
                 print(f"Error parsing metadata JSON from AI response: {e}")
                 metadata_json = {"error": "Failed to parse metadata from AI response."}
+        
+        # Generate smart follow-up suggestions
+        followup_suggestions = await generate_smart_followups(report_content, request.prompt)
+        metadata_json["followup_suggestions"] = followup_suggestions
         
         message_to_save = {
             "conversation_id": convo_id,

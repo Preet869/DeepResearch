@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Header from './Header';
 import PromptInput from './PromptInput';
-import ResultsDisplay from './ResultsDisplay';
+import LayeredResearchDisplay from './LayeredResearchDisplay';
 import { useAuth } from './AuthContext';
 
 // We will add other components like ResultsDisplay here later
@@ -87,12 +87,21 @@ const MainPage = () => {
     }
   };
 
+  const handleFollowUp = (suggestion) => {
+    // Use the suggested follow-up as the prompt
+    handlePromptSubmit(suggestion);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Header />
       <main className="flex-grow container mx-auto p-4 flex flex-col">
         <div className="flex-grow overflow-y-auto mb-4">
-          <ResultsDisplay messages={messages} isLoading={isLoading} />
+          <LayeredResearchDisplay 
+            messages={messages} 
+            isLoading={isLoading} 
+            onFollowUp={handleFollowUp}
+          />
         </div>
         <div className="mt-auto">
           <PromptInput onSubmit={handlePromptSubmit} isLoading={isLoading} />
