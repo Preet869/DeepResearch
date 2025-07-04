@@ -8,7 +8,7 @@ const ResearchTimeline = ({
   exportSelections,
   onExportToggle 
 }) => {
-  const [hoveredNode, setHoveredNode] = useState(null);
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [followUpQuery, setFollowUpQuery] = useState('');
   const timelineRef = useRef(null);
@@ -136,62 +136,51 @@ const ResearchTimeline = ({
             </button>
           )}
         </div>
-      </div>
 
-      {/* Add Follow-up Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96 max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Add Follow-up Research</h3>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (followUpQuery.trim()) {
-                onAddFollowup(followUpQuery.trim());
-                setFollowUpQuery('');
-                setShowAddModal(false);
-              }
-            }}>
-              <textarea
-                value={followUpQuery}
-                onChange={(e) => setFollowUpQuery(e.target.value)}
-                placeholder="Enter your follow-up research question..."
-                className="w-full h-24 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                autoFocus
-              />
-              <div className="flex justify-end space-x-3 mt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setFollowUpQuery('');
-                  }}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  disabled={!followUpQuery.trim()}
-                >
-                  Add Research
-                </button>
-              </div>
-            </form>
+        {/* Add Follow-up Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-96 max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Add Follow-up Research</h3>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (followUpQuery.trim()) {
+                  onAddFollowup(followUpQuery.trim());
+                  setFollowUpQuery('');
+                  setShowAddModal(false);
+                }
+              }}>
+                <textarea
+                  value={followUpQuery}
+                  onChange={(e) => setFollowUpQuery(e.target.value)}
+                  placeholder="Enter your follow-up research question..."
+                  className="w-full h-24 p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoFocus
+                />
+                <div className="flex justify-end space-x-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setFollowUpQuery('');
+                    }}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    disabled={!followUpQuery.trim()}
+                  >
+                    Add Research
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-
-      <style jsx>{`
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
-    </div>
+        )}
+      </div>
   );
 };
 

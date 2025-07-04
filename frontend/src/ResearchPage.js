@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from './Header';
-import EnhancedResearchDisplay from './EnhancedResearchDisplay';
+import LayeredResearchDisplay from './LayeredResearchDisplay';
 
 const ResearchPage = () => {
   const [messages, setMessages] = useState([]);
@@ -12,41 +12,15 @@ const ResearchPage = () => {
   const [conversationTitle, setConversationTitle] = useState('');
   const [folderId, setFolderId] = useState(null);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [activeNodeIndex, setActiveNodeIndex] = useState(0);
+  const [exportSelections, setExportSelections] = useState([]);
   const dropdownRef = useRef(null);
 
   const { token } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  useEffect(() => {
-    const convoId = searchParams.get('convo_id');
-    const folderIdParam = searchParams.get('folder_id');
-    
-    if (convoId) {
-      setConversationId(parseInt(convoId));
-      loadConversation(parseInt(convoId));
-    }
-    
-    if (folderIdParam) {
-      setFolderId(parseInt(folderIdParam));
-    }
-  }, [searchParams, token]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowExportDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  const loadConversation = async (convoId) => {
+  const loadConversation = useCallback(async (convoId) => {
     try {
       const response = await fetch(`http://127.0.0.1:8000/messages/${convoId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -65,7 +39,45 @@ const ResearchPage = () => {
     } catch (error) {
       console.error('Error loading conversation:', error);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    const convoId = searchParams.get('convo_id');
+    const folderIdParam = searchParams.get('folder_id');
+    
+    if (convoId) {
+      setConversationId(parseInt(convoId));
+      loadConversation(parseInt(convoId));
+    }
+    
+    if (folderIdParam) {
+      setFolderId(parseInt(folderIdParam));
+    }
+  }, [searchParams, token, loadConversation]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowExportDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Update active node when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      const userMessages = messages.filter(m => m.role === 'user');
+      if (userMessages.length > 0) {
+        setActiveNodeIndex(userMessages.length - 1);
+      }
+    }
+  }, [messages]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -125,6 +137,81 @@ const ResearchPage = () => {
 
   const goBackToDashboard = () => {
     navigate('/dashboard');
+  };
+
+  // Timeline handlers
+  const handleNodeSelect = (nodeIndex) => {
+    setActiveNodeIndex(nodeIndex);
+  };
+
+  const handleAddFollowup = (query) => {
+    setInputValue(query);
+    // Auto-submit the follow-up
+    handleSubmitFollowup(query);
+  };
+
+  const handleSubmitFollowup = async (query) => {
+    if (!query.trim() || loading) return;
+
+    setLoading(true);
+    const userMessage = { role: 'user', content: query.trim() };
+    setMessages(prev => [...prev, userMessage]);
+
+    try {
+      const requestBody = {
+        prompt: query,
+        conversation_id: conversationId || undefined,
+        folder_id: folderId || undefined
+      };
+
+      const response = await fetch('http://127.0.0.1:8000/research', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (!conversationId) {
+          setConversationId(data.conversation_id);
+          const newSearchParams = new URLSearchParams(searchParams);
+          newSearchParams.set('convo_id', data.conversation_id);
+          navigate(`/research?${newSearchParams.toString()}`, { replace: true });
+        }
+        
+        if (data.new_messages && data.new_messages.length > 0) {
+          setMessages(prev => [...prev, ...data.new_messages]);
+        }
+      } else {
+        throw new Error('Failed to get response');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, there was an error processing your request. Please try again.',
+        model_name: 'Error'
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportToggle = (nodeIndex) => {
+    setExportSelections(prev => 
+      prev.includes(nodeIndex) 
+        ? prev.filter(i => i !== nodeIndex)
+        : [...prev, nodeIndex]
+    );
+  };
+
+  const handleFollowUp = (suggestion) => {
+    setInputValue(suggestion);
+    handleSubmitFollowup(suggestion);
   };
 
   // Export functions
@@ -275,17 +362,15 @@ const ResearchPage = () => {
           )}
 
           {/* Messages */}
-          <EnhancedResearchDisplay 
+          <LayeredResearchDisplay 
             messages={messages} 
             isLoading={loading}
-            onFollowUp={(suggestion) => {
-              setInputValue(suggestion);
-              const syntheticEvent = { preventDefault: () => {} };
-              handleSubmit(syntheticEvent);
-            }}
-            onExportPDF={exportToPDF}
-            onExportMarkdown={exportToMarkdown}
-            onExportJSON={exportToJSON}
+            onFollowUp={handleFollowUp}
+            activeNodeIndex={activeNodeIndex}
+            onNodeSelect={handleNodeSelect}
+            onAddFollowup={handleAddFollowup}
+            exportSelections={exportSelections}
+            onExportToggle={handleExportToggle}
           />
 
           {/* Loading State */}
