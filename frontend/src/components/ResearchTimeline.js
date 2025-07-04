@@ -46,15 +46,15 @@ const ResearchTimeline = ({
   };
 
   const getNodeColor = (node, index) => {
-    if (node.isActive) return 'bg-blue-500 text-white';
-    if (node.type === 'original') return 'bg-white text-gray-900';
-    return 'bg-white text-gray-600 hover:text-gray-900';
+    if (node.isActive) return 'bg-blue-600 text-white shadow-lg';
+    if (node.type === 'original') return 'bg-gray-50 text-gray-900 hover:bg-gray-100';
+    return 'bg-gray-50 text-gray-700 hover:bg-gray-100';
   };
 
   const getNodeIcon = (node, index) => {
-    if (index === 0) return '🔵';
-    const icons = ['🟢', '🟣', '🟡', '🟠'];
-    return icons[(index - 1) % icons.length];
+    // Clean, professional numbering system
+    if (index === 0) return '1';
+    return (index + 1).toString();
   };
 
   useEffect(() => {
@@ -87,12 +87,20 @@ const ResearchTimeline = ({
                 className={`
                   px-3 py-1.5 rounded-full font-medium text-xs transition-all duration-200
                   ${getNodeColor(node, index)}
-                  ${node.isActive ? 'shadow-sm border-2 border-blue-600' : 'border border-gray-300'}
-                  flex items-center space-x-1.5
+                  ${node.isActive ? 'ring-2 ring-blue-200' : 'border border-gray-200 hover:border-gray-300'}
+                  flex items-center space-x-2
                 `}
                 onClick={() => onNodeSelect(index)}
               >
-                <span className="text-sm">{getNodeIcon(node, index)}</span>
+                <span className={`
+                  w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+                  ${node.isActive 
+                    ? 'bg-white text-blue-600' 
+                    : 'bg-gray-100 text-gray-600'
+                  }
+                `}>
+                  {getNodeIcon(node, index)}
+                </span>
                 <span className="whitespace-nowrap">{node.title}</span>
                 
                 {/* Export Checkbox */}
