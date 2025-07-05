@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import Header from './Header';
 import PromptInput from './PromptInput';
 import LayeredResearchDisplay from './LayeredResearchDisplay';
+import ResearchTimeline from './components/ResearchTimeline';
 import { useAuth } from './AuthContext';
 
 // We will add other components like ResultsDisplay here later
@@ -11,6 +12,8 @@ const MainPage = () => {
   const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeNodeIndex, setActiveNodeIndex] = useState(0);
+  const [exportSelections, setExportSelections] = useState([]);
   const { token } = useAuth();
   const location = useLocation();
 
@@ -88,23 +91,58 @@ const MainPage = () => {
   };
 
   const handleFollowUp = (suggestion) => {
-    // Use the suggested follow-up as the prompt
     handlePromptSubmit(suggestion);
   };
+
+  const handleNodeSelect = (nodeIndex) => {
+    setActiveNodeIndex(nodeIndex);
+  };
+
+  const handleAddFollowup = (query) => {
+    handlePromptSubmit(query);
+  };
+
+  const handleExportToggle = (nodeIndex) => {
+    setExportSelections(prev => 
+      prev.includes(nodeIndex) 
+        ? prev.filter(i => i !== nodeIndex)
+        : [...prev, nodeIndex]
+    );
+  };
+
+  // Update active node when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      const userMessages = messages.filter(m => m.role === 'user');
+      if (userMessages.length > 0) {
+        setActiveNodeIndex(userMessages.length - 1);
+      }
+    }
+  }, [messages]);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Header />
-      <main className="flex-grow container mx-auto p-4 flex flex-col">
-        <div className="flex-grow overflow-y-auto mb-4">
+      <main className="flex-grow container mx-auto flex flex-col">
+        {/* Main Content */}
+        <div className="flex-grow overflow-y-auto">
           <LayeredResearchDisplay 
             messages={messages} 
             isLoading={isLoading} 
             onFollowUp={handleFollowUp}
+            activeNodeIndex={activeNodeIndex}
+            onNodeSelect={handleNodeSelect}
+            onAddFollowup={handleAddFollowup}
+            exportSelections={exportSelections}
+            onExportToggle={handleExportToggle}
           />
         </div>
-        <div className="mt-auto">
-          <PromptInput onSubmit={handlePromptSubmit} isLoading={isLoading} />
+
+        {/* Input */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4">
+          <div className="max-w-7xl mx-auto">
+            <PromptInput onSubmit={handlePromptSubmit} isLoading={isLoading} />
+          </div>
         </div>
       </main>
     </div>

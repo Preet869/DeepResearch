@@ -13,6 +13,7 @@ const Dashboard = () => {
   const [newFolderColor, setNewFolderColor] = useState('#3B82F6');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalReports: 0, thisWeek: 0, totalFolders: 0 });
+  const [allConversations, setAllConversations] = useState([]);
 
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -68,15 +69,21 @@ const Dashboard = () => {
         const data = await response.json();
         setConversations(data);
         
-        // Calculate stats
-        const totalReports = data.length;
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-        const thisWeek = data.filter(conv => 
-          new Date(conv.created_at) > oneWeekAgo
-        ).length;
-        
-        setStats(prev => ({ ...prev, totalReports, thisWeek }));
+        // If no folder is selected, this is the complete data set
+        if (!folderId) {
+          setAllConversations(data);
+          
+          // Calculate stats for all conversations
+          const totalReports = data.length;
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          const thisWeek = data.filter(conv => 
+            new Date(conv.created_at) > oneWeekAgo
+          ).length;
+          
+          setStats(prev => ({ ...prev, totalReports, thisWeek }));
+        }
+        // If a folder is selected, we only update the current view but keep total stats
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -164,7 +171,7 @@ const Dashboard = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Reports</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalReports}</p>
+                <p className="text-2xl font-bold text-gray-900">{allConversations.length}</p>
               </div>
             </div>
           </div>
@@ -178,7 +185,11 @@ const Dashboard = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">This Week</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.thisWeek}</p>
+                <p className="text-2xl font-bold text-gray-900">{allConversations.filter(conv => {
+                  const oneWeekAgo = new Date();
+                  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                  return new Date(conv.created_at) > oneWeekAgo;
+                }).length}</p>
               </div>
             </div>
           </div>
@@ -230,7 +241,7 @@ const Dashboard = () => {
                     </svg>
                     <span className="font-medium">All Research</span>
                   </div>
-                  <p className="text-sm text-gray-500 ml-8">{stats.totalReports} reports</p>
+                  <p className="text-sm text-gray-500 ml-8">{allConversations.length} reports</p>
                 </button>
 
                 {/* Folder List */}
