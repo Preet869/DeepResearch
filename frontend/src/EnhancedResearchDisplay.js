@@ -196,30 +196,7 @@ const EnhancedResearchDisplay = ({ messages, isLoading, onFollowUp, onExportPDF,
   const totalReadingTime = sections.sections.reduce((total, section) => total + section.readingTime, 0);
   const hasChart = mainReport?.metadata?.graph_data;
 
-  // Function to determine if chart should be placed after a section
-  const shouldPlaceChartAfter = (sectionTitle) => {
-    const chartPlacementKeywords = [
-      'analysis', 'key findings', 'results', 'evidence', 'findings', 
-      'data', 'statistics', 'trends', 'patterns', 'critical analysis'
-    ];
-    
-    return chartPlacementKeywords.some(keyword => 
-      sectionTitle.toLowerCase().includes(keyword.toLowerCase())
-    );
-  };
 
-  // Find the best section to place the chart after
-  const getChartPlacementIndex = () => {
-    for (let i = 0; i < sections.sections.length; i++) {
-      if (shouldPlaceChartAfter(sections.sections[i].title)) {
-        return i;
-      }
-    }
-    // If no specific section found, place after the first 2 sections
-    return Math.min(1, sections.sections.length - 1);
-  };
-
-  const chartPlacementIndex = hasChart ? getChartPlacementIndex() : -1;
 
   // ALL HOOKS MUST BE HERE - before any early returns
   // Track active section on scroll
@@ -392,33 +369,46 @@ const EnhancedResearchDisplay = ({ messages, isLoading, onFollowUp, onExportPDF,
     </div>
   );
 
-  const SectionNavigator = () => (
-    <div className="sticky top-24 space-y-2">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">Contents</h3>
-        <span className="text-xs text-gray-500">{totalReadingTime} min</span>
+  const SectionNavigator = () => {
+    // Create sections array with References section if chart exists
+    const allSections = [...sections.sections];
+    if (hasChart) {
+      allSections.push({
+        id: 'references-data-viz',
+        title: 'References & Data Visualizations',
+        icon: '📊',
+        readingTime: 2
+      });
+    }
+    
+    return (
+      <div className="sticky top-24 space-y-2">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900">Contents</h3>
+          <span className="text-xs text-gray-500">{totalReadingTime + (hasChart ? 2 : 0)} min</span>
+        </div>
+        {allSections.map((section) => (
+          <button
+            key={section.id}
+            onClick={() => scrollToSection(section.id)}
+            className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border-l-3 ${
+              activeSection === section.id
+                ? 'bg-blue-50 text-blue-700 border-blue-500 font-medium'
+                : 'hover:bg-gray-50 text-gray-600 border-transparent'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center">
+                <span className="mr-2.5 text-base">{section.icon}</span>
+                <span className="text-sm">{section.title}</span>
+              </span>
+              <span className="text-xs text-gray-400">{section.readingTime}m</span>
+            </div>
+          </button>
+        ))}
       </div>
-      {sections.sections.map((section) => (
-        <button
-          key={section.id}
-          onClick={() => scrollToSection(section.id)}
-          className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border-l-3 ${
-            activeSection === section.id
-              ? 'bg-blue-50 text-blue-700 border-blue-500 font-medium'
-              : 'hover:bg-gray-50 text-gray-600 border-transparent'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="flex items-center">
-              <span className="mr-2.5 text-base">{section.icon}</span>
-              <span className="text-sm">{section.title}</span>
-            </span>
-            <span className="text-xs text-gray-400">{section.readingTime}m</span>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
+    );
+  };
 
   const ConfidenceIndicator = () => (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -747,23 +737,31 @@ const EnhancedResearchDisplay = ({ messages, isLoading, onFollowUp, onExportPDF,
                       </div>
                     </section>
                     
-                    {/* Insert Chart After Relevant Section */}
-                    {hasChart && index === chartPlacementIndex && (
-                      <div className="my-8 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+
+                  </React.Fragment>
+                ))}
+                
+                {/* References & Data Visualizations Section - At the End */}
+                {hasChart && (
+                  <section id="references-data-viz" className="scroll-mt-32">
+                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                        <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                          <span className="text-xl mr-3">📊</span>
+                          References & Data Visualizations
+                        </h3>
+                      </div>
+                      <div className="px-6 py-6">
                         <div className="mb-4">
-                          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                            <span className="mr-2">📊</span>
-                            Supporting Data Visualization
-                          </h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            This visualization provides quantitative insights related to the analysis above
+                          <p className="text-sm text-gray-600 leading-relaxed">
+                            The following data visualization provides quantitative insights and supporting evidence for the analysis presented in this report.
                           </p>
                         </div>
                         <ChartDisplay graphData={mainReport.metadata.graph_data} />
                       </div>
-                    )}
-                  </React.Fragment>
-                ))}
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 

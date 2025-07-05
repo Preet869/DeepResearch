@@ -145,30 +145,7 @@ const LayeredResearchDisplay = ({
   const sections = parseResearchContent(mainReport.content);
   const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
 
-  // Function to determine if chart should be placed after a section
-  const shouldPlaceChartAfter = (sectionTitle) => {
-    const chartPlacementKeywords = [
-      'analysis', 'key findings', 'results', 'evidence', 'findings', 
-      'data', 'statistics', 'trends', 'patterns', 'critical analysis'
-    ];
-    
-    return chartPlacementKeywords.some(keyword => 
-      sectionTitle.toLowerCase().includes(keyword.toLowerCase())
-    );
-  };
 
-  // Find the best section to place the chart after
-  const getChartPlacementIndex = () => {
-    for (let i = 0; i < sections.fullSections.length; i++) {
-      if (shouldPlaceChartAfter(sections.fullSections[i].title)) {
-        return i;
-      }
-    }
-    // If no specific section found, place after the first 2 sections
-    return Math.min(1, sections.fullSections.length - 1);
-  };
-
-  const chartPlacementIndex = hasChart ? getChartPlacementIndex() : -1;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
@@ -285,23 +262,29 @@ const LayeredResearchDisplay = ({
                   </div>
                 </section>
                 
-                {/* Insert Chart After Relevant Section */}
-                {hasChart && index === chartPlacementIndex && (
-                  <div className="my-8 -mx-8 px-8 py-6 bg-blue-50 border-t border-b border-blue-200">
-                    <div className="mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                        <span className="mr-2">📊</span>
-                        Supporting Data Visualization
-                      </h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        This chart provides visual context for the analysis above
-                      </p>
-                    </div>
-                    <ChartDisplay graphData={mainReport.metadata.graph_data} />
-                  </div>
-                )}
+
               </React.Fragment>
             ))}
+            
+            {/* References & Data Visualizations Section - At the End */}
+            {hasChart && (
+              <section className="prose prose-lg max-w-none">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center m-0">
+                    <span className="mr-3">📊</span>
+                    References & Data Visualizations
+                  </h2>
+                </div>
+                <div className="text-gray-700 leading-relaxed mb-6">
+                  <p className="text-sm">
+                    The following data visualization provides quantitative insights and supporting evidence for the analysis presented in this report.
+                  </p>
+                </div>
+                <div className="not-prose">
+                  <ChartDisplay graphData={mainReport.metadata.graph_data} />
+                </div>
+              </section>
+            )}
           </div>
         )}
 

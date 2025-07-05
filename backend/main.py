@@ -237,7 +237,12 @@ End your response with this exact format (customize the data based on your analy
 {{
   "graph_data": {{
     "title": "[Descriptive Title Based on Your Analysis]",
-    "type": "bar",
+    "type": "[SMART SELECTION: Choose the most appropriate chart type based on data patterns:
+    - 'bar' for comparisons between categories
+    - 'pie' for proportions/percentages that sum to 100%
+    - 'line' for trends over time or sequential data
+    - 'area' for cumulative data or filled trends
+    - 'scatter' for correlations, distributions, or relationship patterns]",
     "data": [
       {{"name": "[Category 1]", "value": [Number]}},
       {{"name": "[Category 2]", "value": [Number]}},
@@ -249,7 +254,12 @@ End your response with this exact format (customize the data based on your analy
     "description": "[Brief explanation of what this chart represents]",
     "key_insight": "[📈 One compelling sentence about what the data shows - e.g., 'Healthcare AI investment grew 60% in 2024' or 'Renewable energy adoption accelerated fastest in developing nations']",
     "why_matters": "[Brief explanation of why this trend/finding is significant - e.g., 'This trend shows rapid AI adoption in diagnostics, suggesting major healthcare transformation ahead' or 'This indicates a global shift toward sustainable energy independence']",
-    "insight_type": "[primary|risk|opportunity|neutral - categorizes the type of insight for color coding]"
+    "insight_type": "[primary|risk|opportunity|neutral - categorizes the type of insight for color coding]",
+    "ai_insights": [
+      "[✅ First actionable insight from the data - what does this mean for stakeholders?]",
+      "[🔻 Second insight highlighting patterns, risks, or opportunities shown in the chart]",
+      "[🚀 Third insight about implications, next steps, or future considerations]"
+    ]
   }}
 }}
 ```

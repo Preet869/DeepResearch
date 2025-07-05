@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { 
   BarChart, 
   Bar, 
@@ -14,7 +15,10 @@ import {
   LineChart,
   Line,
   Area,
-  AreaChart
+  AreaChart,
+  ScatterChart,
+  Scatter,
+  ZAxis
 } from 'recharts';
 
 const ChartDisplay = ({ graphData }) => {
@@ -22,12 +26,16 @@ const ChartDisplay = ({ graphData }) => {
   const [activeChartType, setActiveChartType] = useState(graphData?.type || 'bar');
   const [showAllData, setShowAllData] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  
+  // Ref for chart container
+  const chartRef = useRef(null);
   
   if (!graphData || !graphData.data || graphData.data.length === 0) {
     return null;
   }
 
-  const { title, type, data, x_label, y_label, description, key_insight, why_matters, insight_type } = graphData;
+  const { title, type, data, x_label, y_label, description, key_insight, why_matters, insight_type, ai_insights } = graphData;
 
   // Data processing for Top 5 limit
   const MAX_ITEMS = 5;
@@ -92,6 +100,42 @@ const ChartDisplay = ({ graphData }) => {
 
   const insightStyling = getInsightStyling(insight_type);
 
+  // Export functions
+  const exportChart = async (format = 'png') => {
+    const chartContainer = document.querySelector('.chart-export-area');
+    if (!chartContainer) return;
+    
+    setIsExporting(true);
+    
+    try {
+      const canvas = await html2canvas(chartContainer, {
+        backgroundColor: '#ffffff',
+        scale: 2, // Higher resolution
+        useCORS: true,
+        allowTaint: true,
+        width: chartContainer.offsetWidth,
+        height: chartContainer.offsetHeight,
+      });
+      
+      if (format === 'png') {
+        // Download as PNG
+        const link = document.createElement('a');
+        link.download = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_chart.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } else if (format === 'svg') {
+        // For SVG, we'll create a simple fallback since Recharts doesn't easily export SVG
+        // In a real implementation, you might use a different charting library or custom SVG export
+        alert('SVG export coming soon! PNG export is available now.');
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const renderBarChart = () => (
     <ResponsiveContainer width="100%" height={350}>
       <BarChart
@@ -110,7 +154,7 @@ const ChartDisplay = ({ graphData }) => {
           tick={{ fontSize: 11 }}
         />
         <YAxis 
-          label={{ value: y_label, angle: -90, position: 'insideLeft' }}
+          label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
           fontSize={12}
           tick={{ fontSize: 11 }}
         />
@@ -189,7 +233,7 @@ const ChartDisplay = ({ graphData }) => {
           fontSize={12}
         />
         <YAxis 
-          label={{ value: y_label, angle: -90, position: 'insideLeft' }}
+          label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
           fontSize={12}
         />
         <Tooltip 
@@ -234,7 +278,7 @@ const ChartDisplay = ({ graphData }) => {
           fontSize={12}
         />
         <YAxis 
-          label={{ value: y_label, angle: -90, position: 'insideLeft' }}
+          label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
           fontSize={12}
         />
                  <Tooltip 
@@ -268,6 +312,62 @@ const ChartDisplay = ({ graphData }) => {
     </ResponsiveContainer>
   );
 
+  const renderScatterChart = () => {
+    // Transform data for scatter plot (assuming data has x, y values or we create them)
+    const scatterData = processedData.map((item, index) => ({
+      x: index + 1, // Use index as x-axis
+      y: item.value,
+      name: item.name
+    }));
+
+    return (
+      <ResponsiveContainer width="100%" height={350}>
+        <ScatterChart
+          data={scatterData}
+          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+          <XAxis 
+            type="number"
+            dataKey="x"
+            name={x_label || 'Position'}
+            label={{ value: x_label || 'Position', position: 'insideBottom', offset: -10 }}
+            fontSize={12}
+          />
+          <YAxis 
+            type="number"
+            dataKey="y"
+            name={y_label || 'Value'}
+            label={{ value: y_label || 'Value', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+            fontSize={12}
+          />
+          <Tooltip 
+            contentStyle={{ 
+              backgroundColor: '#F9FAFB', 
+              border: '1px solid #E5E7EB',
+              borderRadius: '8px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+            }}
+            labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+            formatter={(value, name, props) => [
+              typeof value === 'number' ? value.toLocaleString() : value,
+              props.payload.name || y_label || 'Value'
+            ]}
+            labelFormatter={(label, payload) => 
+              payload && payload[0] ? payload[0].payload.name : `${x_label || 'Point'}: ${label}`
+            }
+          />
+          <Scatter 
+            dataKey="y" 
+            fill="#3B82F6"
+            stroke="#2563EB"
+            strokeWidth={2}
+          />
+        </ScatterChart>
+      </ResponsiveContainer>
+    );
+  };
+
   const renderChart = () => {
     switch (activeChartType) {
       case 'bar':
@@ -278,13 +378,15 @@ const ChartDisplay = ({ graphData }) => {
         return renderLineChart();
       case 'area':
         return renderAreaChart();
+      case 'scatter':
+        return renderScatterChart();
       default:
         return renderBarChart(); // Default to bar chart
     }
   };
 
   return (
-    <div className="mt-6 p-6 bg-white rounded-lg shadow-lg border border-gray-200">
+    <div ref={chartRef} className="mt-6 p-6 bg-white rounded-lg shadow-lg border border-gray-200">
       {/* Story-Driven Insights */}
       {key_insight && (
         <div className={`mb-6 p-5 rounded-xl border-l-4 ${insightStyling.bgColor} ${insightStyling.borderColor} shadow-sm`}>
@@ -332,7 +434,8 @@ const ChartDisplay = ({ graphData }) => {
                 { type: 'bar', icon: '📊', label: 'Bar' },
                 { type: 'pie', icon: '🥧', label: 'Pie' },
                 { type: 'line', icon: '📈', label: 'Line' },
-                { type: 'area', icon: '📉', label: 'Area' }
+                { type: 'area', icon: '📉', label: 'Area' },
+                { type: 'scatter', icon: '🔵', label: 'Scatter' }
               ].map(({ type: chartType, icon, label }) => (
                 <button
                   key={chartType}
@@ -348,6 +451,26 @@ const ChartDisplay = ({ graphData }) => {
                   <span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
+            </div>
+            
+            {/* Export Button */}
+            <div className="relative">
+              <button
+                onClick={() => exportChart('png')}
+                disabled={isExporting}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors duration-200 disabled:opacity-50"
+                title="Export Chart"
+              >
+                {isExporting ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )}
+              </button>
             </div>
             
             {/* Fullscreen Button */}
@@ -370,7 +493,16 @@ const ChartDisplay = ({ graphData }) => {
       
       {/* Chart */}
       <div className="bg-gray-50 rounded-lg p-4">
-        {renderChart()}
+        {/* Export-only container - clean chart for export */}
+        <div className="chart-export-area bg-white p-6 rounded-lg">
+          <div className="text-center mb-4">
+            <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+            {description && (
+              <p className="text-sm text-gray-600 mt-1">{description}</p>
+            )}
+          </div>
+          {renderChart()}
+        </div>
         
         {/* Show All Data Button */}
         {data.length > MAX_ITEMS && (
@@ -398,6 +530,31 @@ const ChartDisplay = ({ graphData }) => {
         )}
       </div>
       
+      {/* AI Insights Panel */}
+      {ai_insights && ai_insights.length > 0 && (
+        <div className="mt-6 p-5 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-200">
+          <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <span className="mr-2">🧠</span>
+            AI-Generated Insights
+          </h4>
+          <div className="space-y-3">
+            {ai_insights.map((insight, index) => (
+              <div key={index} className="flex items-start space-x-3 p-3 bg-white rounded-lg border border-indigo-100">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-sm">
+                  {index + 1}
+                </div>
+                <p className="text-gray-700 leading-relaxed text-sm">
+                  {insight}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 text-xs text-gray-500 italic">
+            💡 These insights are AI-generated based on the chart data and research context
+          </div>
+        </div>
+      )}
+      
       {/* Fullscreen Modal */}
       {isFullscreen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -421,7 +578,8 @@ const ChartDisplay = ({ graphData }) => {
                     { type: 'bar', icon: '📊', label: 'Bar' },
                     { type: 'pie', icon: '🥧', label: 'Pie' },
                     { type: 'line', icon: '📈', label: 'Line' },
-                    { type: 'area', icon: '📉', label: 'Area' }
+                    { type: 'area', icon: '📉', label: 'Area' },
+                    { type: 'scatter', icon: '🔵', label: 'Scatter' }
                   ].map(({ type: chartType, icon, label }) => (
                     <button
                       key={chartType}
@@ -502,7 +660,7 @@ const ChartDisplay = ({ graphData }) => {
                         interval={0}
                       />
                       <YAxis 
-                        label={{ value: y_label, angle: -90, position: 'insideLeft' }}
+                        label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
                         fontSize={14}
                       />
                       <Tooltip 
@@ -576,7 +734,7 @@ const ChartDisplay = ({ graphData }) => {
                         fontSize={14}
                       />
                       <YAxis 
-                        label={{ value: y_label, angle: -90, position: 'insideLeft' }}
+                        label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
                         fontSize={14}
                       />
                       <Tooltip 
@@ -617,7 +775,7 @@ const ChartDisplay = ({ graphData }) => {
                         fontSize={14}
                       />
                       <YAxis 
-                        label={{ value: y_label, angle: -90, position: 'insideLeft' }}
+                        label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
                         fontSize={14}
                       />
                       <Tooltip 
@@ -650,6 +808,56 @@ const ChartDisplay = ({ graphData }) => {
                       </defs>
                     </AreaChart>
                   )}
+                  
+                  {activeChartType === 'scatter' && (
+                    <ScatterChart
+                      data={processedData.map((item, index) => ({
+                        x: index + 1,
+                        y: item.value,
+                        name: item.name
+                      }))}
+                      margin={{ top: 20, right: 30, left: 40, bottom: 80 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis 
+                        type="number"
+                        dataKey="x"
+                        name={x_label || 'Position'}
+                        label={{ value: x_label || 'Position', position: 'insideBottom', offset: -10 }}
+                        fontSize={14}
+                      />
+                      <YAxis 
+                        type="number"
+                        dataKey="y"
+                        name={y_label || 'Value'}
+                        label={{ value: y_label || 'Value', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+                        fontSize={14}
+                      />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: '#F9FAFB', 
+                          border: '1px solid #E5E7EB',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                          fontSize: '14px'
+                        }}
+                        labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+                        formatter={(value, name, props) => [
+                          typeof value === 'number' ? value.toLocaleString() : value,
+                          props.payload.name || y_label || 'Value'
+                        ]}
+                        labelFormatter={(label, payload) => 
+                          payload && payload[0] ? payload[0].payload.name : `${x_label || 'Point'}: ${label}`
+                        }
+                      />
+                      <Scatter 
+                        dataKey="y" 
+                        fill="#3B82F6"
+                        stroke="#2563EB"
+                        strokeWidth={2}
+                      />
+                    </ScatterChart>
+                  )}
                 </ResponsiveContainer>
                 
                 {/* Show All Data Button in Modal */}
@@ -675,12 +883,37 @@ const ChartDisplay = ({ graphData }) => {
                       )}
                     </button>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                                 )}
+               </div>
+               
+               {/* AI Insights in Modal */}
+               {ai_insights && ai_insights.length > 0 && (
+                 <div className="mt-8 p-6 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-200">
+                   <h4 className="text-xl font-semibold text-gray-900 mb-5 flex items-center">
+                     <span className="mr-2">🧠</span>
+                     AI-Generated Insights
+                   </h4>
+                   <div className="space-y-4">
+                     {ai_insights.map((insight, index) => (
+                       <div key={index} className="flex items-start space-x-4 p-4 bg-white rounded-lg border border-indigo-100">
+                         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center font-semibold text-indigo-600">
+                           {index + 1}
+                         </div>
+                         <p className="text-gray-700 leading-relaxed">
+                           {insight}
+                         </p>
+                       </div>
+                     ))}
+                   </div>
+                   <div className="mt-5 text-sm text-gray-500 italic">
+                     💡 These insights are AI-generated based on the chart data and research context
+                   </div>
+                 </div>
+               )}
+             </div>
+           </div>
+         </div>
+       )}
     </div>
   );
 };
