@@ -149,8 +149,11 @@ async def generate_academic_report(prompt: str, context: List[Dict], summary: Op
 
 **CRITICAL REQUIREMENTS:**
 
-1. **MANDATORY VISUALIZATION:** You MUST generate a `graph_data` JSON block. This is non-negotiable.
+1. **MANDATORY STORY-DRIVEN VISUALIZATION:** You MUST generate a `graph_data` JSON block with compelling narrative insights. This is non-negotiable.
    - Extract quantifiable data from sources when available (statistics, percentages, counts, trends)
+   - Create a compelling "key_insight" that tells the story of what the data reveals
+   - Explain "why_matters" to give context and significance
+   - Categorize the insight type (primary/risk/opportunity/neutral) for proper visual treatment
    - If no explicit numbers exist, create meaningful conceptual visualizations:
      * Source distribution by type (Academic, News, Government, Industry)
      * Geographic distribution of information
@@ -243,7 +246,10 @@ End your response with this exact format (customize the data based on your analy
     ],
     "x_label": "[X-Axis Label]",
     "y_label": "[Y-Axis Label]",
-    "description": "[Brief explanation of what this chart represents]"
+    "description": "[Brief explanation of what this chart represents]",
+    "key_insight": "[📈 One compelling sentence about what the data shows - e.g., 'Healthcare AI investment grew 60% in 2024' or 'Renewable energy adoption accelerated fastest in developing nations']",
+    "why_matters": "[Brief explanation of why this trend/finding is significant - e.g., 'This trend shows rapid AI adoption in diagnostics, suggesting major healthcare transformation ahead' or 'This indicates a global shift toward sustainable energy independence']",
+    "insight_type": "[primary|risk|opportunity|neutral - categorizes the type of insight for color coding]"
   }}
 }}
 ```
