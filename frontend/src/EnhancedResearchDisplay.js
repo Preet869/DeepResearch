@@ -194,6 +194,9 @@ const EnhancedResearchDisplay = ({ messages, isLoading, onFollowUp, onExportPDF,
   const sections = mainReport ? parseEnhancedSections(mainReport.content) : { sections: [], executiveSummary: [], keyFindings: [], title: '' };
   const confidenceScore = mainReport ? calculateConfidenceScore(mainReport.metadata) : 0;
   const totalReadingTime = sections.sections.reduce((total, section) => total + section.readingTime, 0);
+  const hasChart = mainReport?.metadata?.graph_data;
+
+
 
   // ALL HOOKS MUST BE HERE - before any early returns
   // Track active section on scroll
@@ -366,33 +369,46 @@ const EnhancedResearchDisplay = ({ messages, isLoading, onFollowUp, onExportPDF,
     </div>
   );
 
-  const SectionNavigator = () => (
-    <div className="sticky top-24 space-y-2">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">Contents</h3>
-        <span className="text-xs text-gray-500">{totalReadingTime} min</span>
+  const SectionNavigator = () => {
+    // Create sections array with References section if chart exists
+    const allSections = [...sections.sections];
+    if (hasChart) {
+      allSections.push({
+        id: 'references-data-viz',
+        title: 'References & Data Visualizations',
+        icon: '📊',
+        readingTime: 2
+      });
+    }
+    
+    return (
+      <div className="sticky top-24 space-y-2">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900">Contents</h3>
+          <span className="text-xs text-gray-500">{totalReadingTime + (hasChart ? 2 : 0)} min</span>
+        </div>
+        {allSections.map((section) => (
+          <button
+            key={section.id}
+            onClick={() => scrollToSection(section.id)}
+            className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border-l-3 ${
+              activeSection === section.id
+                ? 'bg-blue-50 text-blue-700 border-blue-500 font-medium'
+                : 'hover:bg-gray-50 text-gray-600 border-transparent'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="flex items-center">
+                <span className="mr-2.5 text-base">{section.icon}</span>
+                <span className="text-sm">{section.title}</span>
+              </span>
+              <span className="text-xs text-gray-400">{section.readingTime}m</span>
+            </div>
+          </button>
+        ))}
       </div>
-      {sections.sections.map((section) => (
-        <button
-          key={section.id}
-          onClick={() => scrollToSection(section.id)}
-          className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border-l-3 ${
-            activeSection === section.id
-              ? 'bg-blue-50 text-blue-700 border-blue-500 font-medium'
-              : 'hover:bg-gray-50 text-gray-600 border-transparent'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="flex items-center">
-              <span className="mr-2.5 text-base">{section.icon}</span>
-              <span className="text-sm">{section.title}</span>
-            </span>
-            <span className="text-xs text-gray-400">{section.readingTime}m</span>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
+    );
+  };
 
   const ConfidenceIndicator = () => (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -664,64 +680,92 @@ const EnhancedResearchDisplay = ({ messages, isLoading, onFollowUp, onExportPDF,
                     </div>
                   </div>
                 </section>
+
+                {/* Chart in Summary View */}
+                {hasChart && (
+                  <section>
+                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                      <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <span className="mr-2">📊</span>
+                        Key Data Insights
+                      </h2>
+                      <ChartDisplay graphData={mainReport.metadata.graph_data} />
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 
             {/* Full Report Content */}
             {activeTab === 'full-report' && (
               <div className="space-y-6">
-                {filterSectionsByMode(sections, readingMode).map((section) => (
-                  <section key={section.id} id={section.id} className="scroll-mt-32">
-                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                            <span className="text-xl mr-3">{section.icon}</span>
-                            {section.title}
-                          </h3>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs text-gray-500">{section.readingTime} min</span>
-                            <button
-                              onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
-                              className="text-gray-400 hover:text-gray-600 p-1.5 rounded"
-                              title="Copy section"
-                            >
-                              {copiedSection === section.title ? (
-                                <span className="text-green-500 text-sm">✓</span>
-                              ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              )}
-                            </button>
+                {filterSectionsByMode(sections, readingMode).map((section, index) => (
+                  <React.Fragment key={section.id}>
+                    <section id={section.id} className="scroll-mt-32">
+                      <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                              <span className="text-xl mr-3">{section.icon}</span>
+                              {section.title}
+                            </h3>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs text-gray-500">{section.readingTime} min</span>
+                              <button
+                                onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
+                                className="text-gray-400 hover:text-gray-600 p-1.5 rounded"
+                                title="Copy section"
+                              >
+                                {copiedSection === section.title ? (
+                                  <span className="text-green-500 text-sm">✓</span>
+                                ) : (
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="px-6 py-6">
+                          <div className="prose prose-lg max-w-none text-gray-700 leading-relaxed">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {section.content.join('\n')}
+                            </ReactMarkdown>
                           </div>
                         </div>
                       </div>
+                    </section>
+                    
+
+                  </React.Fragment>
+                ))}
+                
+                {/* References & Data Visualizations Section - At the End */}
+                {hasChart && (
+                  <section id="references-data-viz" className="scroll-mt-32">
+                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                        <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                          <span className="text-xl mr-3">📊</span>
+                          References & Data Visualizations
+                        </h3>
+                      </div>
                       <div className="px-6 py-6">
-                        <div className="prose prose-lg max-w-none text-gray-700 leading-relaxed">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {section.content.join('\n')}
-                          </ReactMarkdown>
+                        <div className="mb-4">
+                          <p className="text-sm text-gray-600 leading-relaxed">
+                            The following data visualization provides quantitative insights and supporting evidence for the analysis presented in this report.
+                          </p>
                         </div>
+                        <ChartDisplay graphData={mainReport.metadata.graph_data} />
                       </div>
                     </div>
                   </section>
-                ))}
+                )}
               </div>
             )}
 
-            {/* Chart Display */}
-            {mainReport.metadata?.graph_data && (
-              <section id="chart-section" className="mt-8">
-                <div className="bg-white border border-gray-200 rounded-lg p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <span className="mr-2">📊</span>
-                    Data Visualization
-                  </h3>
-                  <ChartDisplay graphData={mainReport.metadata.graph_data} />
-                </div>
-              </section>
-            )}
+
 
             {/* Loading State for Follow-ups */}
             {isLoading && messages.length > 0 && (

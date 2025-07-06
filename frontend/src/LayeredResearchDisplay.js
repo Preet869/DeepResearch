@@ -145,6 +145,8 @@ const LayeredResearchDisplay = ({
   const sections = parseResearchContent(mainReport.content);
   const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
 
+
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
       {/* Tabs Header */}
@@ -216,51 +218,77 @@ const LayeredResearchDisplay = ({
                 </p>
               ))}
             </div>
+            
+            {/* Chart in Summary View */}
+            {hasChart && (
+              <div className="mt-8 p-6 bg-white rounded-lg border border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <span className="mr-2">📊</span>
+                  Key Data Insights
+                </h3>
+                <ChartDisplay graphData={mainReport.metadata.graph_data} />
+              </div>
+            )}
           </div>
         ) : (
           /* Full Report Sections */
           <div className="px-8 py-6 space-y-8">
             {sections.fullSections.map((section, index) => (
-            <section key={index} className="prose prose-lg max-w-none">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-gray-900 flex items-center m-0">
-                  <span className="mr-3">{section.icon}</span>
-                  {section.title}
-                </h2>
-                <button
-                  onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
-                  className="text-gray-400 hover:text-gray-600 p-2"
-                  title="Copy section"
-                >
-                  {copiedSection === section.title ? (
-                    <span className="text-green-500">✓</span>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              <div className="text-gray-700 leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {section.content.join('\n')}
-                </ReactMarkdown>
-              </div>
-            </section>
-          ))}
+              <React.Fragment key={index}>
+                <section className="prose prose-lg max-w-none">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-gray-900 flex items-center m-0">
+                      <span className="mr-3">{section.icon}</span>
+                      {section.title}
+                    </h2>
+                    <button
+                      onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
+                      className="text-gray-400 hover:text-gray-600 p-2"
+                      title="Copy section"
+                    >
+                      {copiedSection === section.title ? (
+                        <span className="text-green-500">✓</span>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <div className="text-gray-700 leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {section.content.join('\n')}
+                    </ReactMarkdown>
+                  </div>
+                </section>
+                
+
+              </React.Fragment>
+            ))}
+            
+            {/* References & Data Visualizations Section - At the End */}
+            {hasChart && (
+              <section className="prose prose-lg max-w-none">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center m-0">
+                    <span className="mr-3">📊</span>
+                    References & Data Visualizations
+                  </h2>
+                </div>
+                <div className="text-gray-700 leading-relaxed mb-6">
+                  <p className="text-sm">
+                    The following data visualization provides quantitative insights and supporting evidence for the analysis presented in this report.
+                  </p>
+                </div>
+                <div className="not-prose">
+                  <ChartDisplay graphData={mainReport.metadata.graph_data} />
+                </div>
+              </section>
+            )}
           </div>
         )}
 
-        {/* Chart Display */}
-        {hasChart && (
-          <div className="px-8 py-6 border-t border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="mr-2">📊</span>
-              Data Visualization
-            </h3>
-            <ChartDisplay graphData={mainReport.metadata.graph_data} />
-          </div>
-        )}
+
       </div>
 
       {/* Loading State for Follow-ups */}
