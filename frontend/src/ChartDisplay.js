@@ -17,8 +17,7 @@ import {
   Area,
   AreaChart,
   ScatterChart,
-  Scatter,
-  ZAxis
+  Scatter
 } from 'recharts';
 
 const ChartDisplay = ({ graphData }) => {
@@ -35,7 +34,7 @@ const ChartDisplay = ({ graphData }) => {
     return null;
   }
 
-  const { title, type, data, x_label, y_label, description, key_insight, why_matters, insight_type, ai_insights } = graphData;
+  const { title, data, x_label, y_label, description, key_insight, why_matters, insight_type, ai_insights } = graphData;
 
   // Data processing for Top 5 limit
   const MAX_ITEMS = 5;
@@ -136,52 +135,117 @@ const ChartDisplay = ({ graphData }) => {
     }
   };
 
-  const renderBarChart = () => (
-    <ResponsiveContainer width="100%" height={350}>
-      <BarChart
-        data={processedData}
-        margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-      >
-        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-        <XAxis 
-          dataKey="name" 
-          label={{ value: x_label, position: 'insideBottom', offset: -10 }}
-          angle={-45}
-          textAnchor="end"
-          height={80}
-          fontSize={12}
-          interval={0}
-          tick={{ fontSize: 11 }}
-        />
-        <YAxis 
-          label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
-          fontSize={12}
-          tick={{ fontSize: 11 }}
-        />
-        <Tooltip 
-          contentStyle={{ 
-            backgroundColor: '#F9FAFB', 
-            border: '1px solid #E5E7EB',
-            borderRadius: '8px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-          }}
-          labelStyle={{ fontWeight: 'bold', color: '#374151' }}
-          formatter={(value, name) => [
-            typeof value === 'number' ? value.toLocaleString() : value,
-            y_label || 'Value'
-          ]}
-          labelFormatter={(label) => `${x_label || 'Category'}: ${label}`}
-        />
-        <Bar 
-          dataKey="value" 
-          fill="#3B82F6" 
-          radius={[4, 4, 0, 0]}
-          stroke="#2563EB"
-          strokeWidth={1}
-        />
-      </BarChart>
-    </ResponsiveContainer>
-  );
+  const renderBarChart = () => {
+    // Check if this is a comparison chart (has value2 data)
+    const isComparisonChart = processedData.some(item => item.value2 !== undefined);
+    
+    if (isComparisonChart) {
+      return (
+        <ResponsiveContainer width="100%" height={350}>
+          <BarChart
+            data={processedData}
+            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+            <XAxis 
+              dataKey="name" 
+              label={{ value: x_label, position: 'insideBottom', offset: -10 }}
+              angle={-45}
+              textAnchor="end"
+              height={80}
+              fontSize={12}
+              interval={0}
+              tick={{ fontSize: 11 }}
+            />
+            <YAxis 
+              label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+              fontSize={12}
+              tick={{ fontSize: 11 }}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                backgroundColor: '#F9FAFB', 
+                border: '1px solid #E5E7EB',
+                borderRadius: '8px',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+              }}
+              labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+              formatter={(value, name) => [
+                typeof value === 'number' ? value.toLocaleString() : value,
+                name === 'value' ? (graphData.article1_title || 'Article 1') : (graphData.article2_title || 'Article 2')
+              ]}
+              labelFormatter={(label) => `${x_label || 'Category'}: ${label}`}
+            />
+            <Legend />
+            <Bar 
+              dataKey="value" 
+              name={graphData.article1_title || 'Article 1'}
+              fill="#3B82F6" 
+              radius={[4, 4, 0, 0]}
+              stroke="#2563EB"
+              strokeWidth={1}
+            />
+            <Bar 
+              dataKey="value2" 
+              name={graphData.article2_title || 'Article 2'}
+              fill="#10B981" 
+              radius={[4, 4, 0, 0]}
+              stroke="#059669"
+              strokeWidth={1}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      );
+    }
+    
+    // Regular single-value bar chart
+    return (
+      <ResponsiveContainer width="100%" height={350}>
+        <BarChart
+          data={processedData}
+          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+          <XAxis 
+            dataKey="name" 
+            label={{ value: x_label, position: 'insideBottom', offset: -10 }}
+            angle={-45}
+            textAnchor="end"
+            height={80}
+            fontSize={12}
+            interval={0}
+            tick={{ fontSize: 11 }}
+          />
+          <YAxis 
+            label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+            fontSize={12}
+            tick={{ fontSize: 11 }}
+          />
+          <Tooltip 
+            contentStyle={{ 
+              backgroundColor: '#F9FAFB', 
+              border: '1px solid #E5E7EB',
+              borderRadius: '8px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+            }}
+            labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+            formatter={(value, name) => [
+              typeof value === 'number' ? value.toLocaleString() : value,
+              y_label || 'Value'
+            ]}
+            labelFormatter={(label) => `${x_label || 'Category'}: ${label}`}
+          />
+          <Bar 
+            dataKey="value" 
+            fill="#3B82F6" 
+            radius={[4, 4, 0, 0]}
+            stroke="#2563EB"
+            strokeWidth={1}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  };
 
   const renderPieChart = () => (
     <ResponsiveContainer width="100%" height={350}>

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './AuthContext';
 import Dashboard from './Dashboard';
 import ResearchPage from './ResearchPage';
+import ComparisonPage from './ComparisonPage';
 import LoginPage from './LoginPage';
 import './App.css';
 
@@ -38,6 +39,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ResearchPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/compare" 
+            element={
+              <ProtectedRoute>
+                <ComparisonPage />
               </ProtectedRoute>
             } 
           />

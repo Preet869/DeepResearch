@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ChartDisplay from './ChartDisplay';
+import ComparisonReportDisplay from './ComparisonReportDisplay';
 
 const LayeredResearchDisplay = ({ 
   messages, 
@@ -145,7 +146,22 @@ const LayeredResearchDisplay = ({
   const sections = parseResearchContent(mainReport.content);
   const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
 
+  // Check if this is a comparison report
+  const isComparisonReport = mainReport.metadata?.comparison_type === 'article_comparison';
 
+  // If it's a comparison report, use the specialized comparison display
+  if (isComparisonReport) {
+    return (
+      <ComparisonReportDisplay 
+        messages={messages} 
+        isLoading={isLoading}
+        onFollowUp={(query) => {
+          setCurrentFollowUpQuery(query);
+          onFollowUp && onFollowUp(query);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">

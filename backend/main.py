@@ -49,6 +49,16 @@ class ConversationMove(BaseModel):
     conversation_id: int
     folder_id: Optional[int] = None
 
+class ArticleComparisonRequest(BaseModel):
+    article1_url: Optional[str] = None
+    article1_text: Optional[str] = None
+    article1_title: Optional[str] = None
+    article2_url: Optional[str] = None
+    article2_text: Optional[str] = None
+    article2_title: Optional[str] = None
+    comparison_focus: Optional[str] = None  # e.g., "methodology", "findings", "overall"
+    folder_id: Optional[int] = None
+
 # --- Helper Functions ---
 async def get_user_from_token(access_token: str):
     """Validates JWT token and returns user information."""
@@ -317,6 +327,172 @@ Format: Return only the 5 questions, one per line, without numbering or bullet p
             "What are the policy implications and recommendations?"
         ]
 
+async def extract_article_content(url: str) -> Dict[str, str]:
+    """Extracts article content from a URL using web scraping."""
+    try:
+        # Use Tavily to get article content
+        response = tavily_client.search(query=f"site:{url}", search_depth="basic", max_results=1)
+        if response['results']:
+            result = response['results'][0]
+            return {
+                'title': result.get('title', ''),
+                'content': result.get('content', ''),
+                'url': result.get('url', url)
+            }
+        return {'title': '', 'content': '', 'url': url}
+    except Exception as e:
+        print(f"Error extracting article content: {e}")
+        return {'title': '', 'content': '', 'url': url}
+
+async def generate_article_comparison_report(article1: Dict, article2: Dict, focus: str = "overall") -> str:
+    """Generates a comprehensive comparison report between two articles."""
+    
+    focus_instructions = {
+        "methodology": "Focus primarily on comparing research methods, data collection approaches, analytical frameworks, and experimental design.",
+        "findings": "Concentrate on comparing key findings, results, conclusions, and evidence presented in both articles.",
+        "overall": "Provide a comprehensive comparison covering all aspects including methodology, findings, writing style, and implications."
+    }
+    
+    focus_instruction = focus_instructions.get(focus, focus_instructions["overall"])
+    
+    comparison_prompt = f"""You are an expert academic reviewer conducting a comprehensive comparative analysis of two research articles. {focus_instruction}
+
+**CRITICAL REQUIREMENTS:**
+
+1. **MANDATORY COMPARATIVE VISUALIZATION:** You MUST generate a `graph_data` JSON block with meaningful comparison metrics.
+   - Create quantitative comparisons (similarity scores, difference metrics, coverage areas)
+   - Generate compelling insights about how the articles compare
+   - Use appropriate chart types for comparison data
+   - Include specific metrics like methodology similarity, finding alignment, citation overlap, etc.
+
+2. **STRUCTURED COMPARISON ANALYSIS:**
+   - Provide detailed side-by-side analysis
+   - Identify similarities, differences, and unique contributions
+   - Assess methodological rigor and evidence quality
+   - Evaluate implications and significance
+
+**ARTICLE 1:**
+Title: {article1.get('title', 'Article 1')}
+Content: {article1.get('content', '')[:3000]}...
+
+**ARTICLE 2:**
+Title: {article2.get('title', 'Article 2')}
+Content: {article2.get('content', '')[:3000]}...
+
+**REPORT STRUCTURE:**
+
+# Comparative Analysis: {article1.get('title', 'Article 1')} vs {article2.get('title', 'Article 2')}
+
+## Executive Summary
+• 4-5 bullet points highlighting key similarities and differences
+• Overall assessment of how the articles complement or contradict each other
+
+## Comparative Overview
+### Article 1: {article1.get('title', 'Article 1')}
+- Brief summary of main thesis and approach
+- Key methodological features
+- Primary findings and conclusions
+
+### Article 2: {article2.get('title', 'Article 2')}
+- Brief summary of main thesis and approach
+- Key methodological features
+- Primary findings and conclusions
+
+## Detailed Comparative Analysis
+
+### Methodological Comparison
+- Compare research approaches, data sources, and analytical methods
+- Assess strengths and limitations of each approach
+- Identify complementary or conflicting methodologies
+
+### Findings and Evidence Comparison
+- Side-by-side comparison of key findings
+- Areas of agreement and disagreement
+- Quality and strength of evidence presented
+- Statistical significance and practical implications
+
+### Theoretical Framework Comparison
+- Compare underlying theories and conceptual frameworks
+- Assess theoretical contributions and innovations
+- Identify gaps or overlaps in theoretical coverage
+
+### Practical Implications Comparison
+- Compare real-world applications and recommendations
+- Assess policy implications and actionable insights
+- Identify areas where articles complement each other
+
+## Synthesis and Integration
+- How the articles can be read together for comprehensive understanding
+- Areas where one article fills gaps in the other
+- Conflicting viewpoints and potential reconciliation
+
+## Critical Assessment
+- Relative strengths and weaknesses of each article
+- Methodological rigor comparison
+- Contribution to the field assessment
+
+## Recommendations for Further Research
+- Research gaps identified across both articles
+- Suggested follow-up studies or investigations
+- Areas requiring additional evidence or analysis
+
+## Conclusion
+- Summary of key comparative insights
+- Overall assessment of how articles advance understanding
+- Recommendations for practitioners and researchers
+
+---
+
+**MANDATORY JSON OUTPUT:**
+End your response with this exact format:
+
+```json
+{{
+  "graph_data": {{
+    "title": "Article Comparison Metrics",
+    "type": "bar",
+    "data": [
+      {{"name": "Methodology Rigor", "value": [Score1], "value2": [Score2]}},
+      {{"name": "Evidence Quality", "value": [Score1], "value2": [Score2]}},
+      {{"name": "Practical Relevance", "value": [Score1], "value2": [Score2]}},
+      {{"name": "Theoretical Depth", "value": [Score1], "value2": [Score2]}},
+      {{"name": "Citation Impact", "value": [Score1], "value2": [Score2]}}
+    ],
+    "x_label": "Comparison Criteria",
+    "y_label": "Score (1-10)",
+    "description": "Comparative scoring of both articles across key evaluation criteria",
+    "key_insight": "📊 [Key insight about the comparison - e.g., 'Article 1 shows stronger methodology while Article 2 provides more practical applications']",
+    "why_matters": "[Explanation of why this comparison is significant for understanding the topic]",
+    "insight_type": "primary",
+    "ai_insights": [
+      "✅ [First insight about methodological differences or similarities]",
+      "🔍 [Second insight about finding alignment or contradictions]",
+      "🚀 [Third insight about combined implications or future directions]"
+    ],
+    "comparison_summary": {{
+      "similarity_score": [0-100],
+      "key_differences": ["Difference 1", "Difference 2", "Difference 3"],
+      "complementary_areas": ["Area 1", "Area 2"],
+      "conflicting_areas": ["Area 1", "Area 2"]
+    }}
+  }}
+}}
+```
+
+Remember: The comparison visualization and analysis are MANDATORY. Provide specific, actionable insights about how these articles relate to each other."""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": comparison_prompt}],
+            max_tokens=5000,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error generating comparison report: {e}")
+        return f"Error generating comparison report: {e}"
+
 # --- API Endpoints ---
 @app.get("/")
 async def root():
@@ -563,5 +739,107 @@ async def run_research(request: ResearchRequest, authorization: str = Header(...
         return {"conversation_id": convo_id, "new_messages": message_res.data}
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/compare-articles")
+async def compare_articles(request: ArticleComparisonRequest, authorization: str = Header(...)):
+    """Compares two articles and generates a comprehensive comparison report."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Validate that we have at least two articles to compare
+        if not ((request.article1_url or request.article1_text) and (request.article2_url or request.article2_text)):
+            raise HTTPException(status_code=400, detail="Both articles must be provided (either URL or text)")
+
+        # Extract article content
+        article1 = {}
+        article2 = {}
+
+        if request.article1_url:
+            article1 = await extract_article_content(request.article1_url)
+        else:
+            article1 = {
+                'title': request.article1_title or 'Article 1',
+                'content': request.article1_text or '',
+                'url': ''
+            }
+
+        if request.article2_url:
+            article2 = await extract_article_content(request.article2_url)
+        else:
+            article2 = {
+                'title': request.article2_title or 'Article 2',
+                'content': request.article2_text or '',
+                'url': ''
+            }
+
+        # Generate comparison report
+        comparison_report = await generate_article_comparison_report(
+            article1, 
+            article2, 
+            request.comparison_focus or "overall"
+        )
+
+        # Create conversation for the comparison
+        title = f"Article Comparison: {article1.get('title', 'Article 1')} vs {article2.get('title', 'Article 2')}"
+        conversation_data = {"user_id": user.id, "title": title}
+        if request.folder_id:
+            conversation_data["folder_id"] = request.folder_id
+        
+        convo_res = supabase.table("conversations").insert(conversation_data).execute()
+        convo_id = convo_res.data[0]['id']
+
+        # Save user's comparison request
+        user_message_content = f"Compare these two articles:\n\n**Article 1:** {article1.get('title', 'Article 1')}\n"
+        if article1.get('url'):
+            user_message_content += f"URL: {article1['url']}\n"
+        user_message_content += f"\n**Article 2:** {article2.get('title', 'Article 2')}\n"
+        if article2.get('url'):
+            user_message_content += f"URL: {article2['url']}\n"
+        if request.comparison_focus:
+            user_message_content += f"\n**Focus:** {request.comparison_focus}"
+
+        supabase.table("messages").insert({
+            "conversation_id": convo_id,
+            "role": "user",
+            "content": user_message_content
+        }).execute()
+
+        # Process and save the comparison report
+        report_content = comparison_report
+        metadata_json = {}
+        
+        if "```json" in comparison_report:
+            try:
+                json_str = comparison_report.split("```json")[1].split("```")[0].strip()
+                metadata_json = json.loads(json_str)
+                report_content = comparison_report.split("```json")[0].strip()
+            except (json.JSONDecodeError, IndexError) as e:
+                print(f"Error parsing comparison metadata JSON: {e}")
+                metadata_json = {"error": "Failed to parse comparison metadata"}
+
+        # Add comparison-specific metadata
+        metadata_json["comparison_type"] = "article_comparison"
+        metadata_json["article1_title"] = article1.get('title', 'Article 1')
+        metadata_json["article2_title"] = article2.get('title', 'Article 2')
+        metadata_json["comparison_focus"] = request.comparison_focus or "overall"
+
+        message_to_save = {
+            "conversation_id": convo_id,
+            "role": "assistant",
+            "model_name": "Article Comparison Report",
+            "content": report_content,
+            "metadata": metadata_json
+        }
+
+        message_res = supabase.table("messages").insert(message_to_save).execute()
+
+        return {"conversation_id": convo_id, "new_messages": message_res.data}
+
+    except Exception as e:
+        print(f"Error in compare_articles: {e}")
         raise HTTPException(status_code=500, detail=str(e))
  
