@@ -151,7 +151,7 @@ const DroppableFolderButton = ({ folder, isSelected, onSelect, isOver, id, isDra
 };
 
 // Draggable & Droppable Folder Component
-const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, isOverForReorder, isDragging, isDraggingFolder, onDelete }) => {
+const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, isOverForReorder, isDragging, isDraggingFolder, onDelete, onEdit }) => {
   const {
     attributes,
     listeners,
@@ -219,6 +219,18 @@ const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, is
           <button
             onClick={(e) => {
               e.stopPropagation();
+              onEdit(folder);
+            }}
+            className="action-button p-1 opacity-0 group-hover/folder:opacity-100 transition-opacity text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded"
+            title="Edit folder"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
               onDelete(folder);
             }}
             className="action-button p-1 opacity-0 group-hover/folder:opacity-100 transition-opacity text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
@@ -274,6 +286,10 @@ const Dashboard = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteType, setDeleteType] = useState(null); // 'conversation' or 'folder'
+  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
+  const [editFolderData, setEditFolderData] = useState(null);
+  const [editFolderName, setEditFolderName] = useState('');
+  const [editFolderColor, setEditFolderColor] = useState('#3B82F6');
 
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -384,6 +400,44 @@ const Dashboard = () => {
     }
   };
 
+  const updateFolder = async () => {
+    if (!editFolderName.trim() || !editFolderData) return;
+    
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/folders/${editFolderData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: editFolderName,
+          color: editFolderColor
+        })
+      });
+      
+      if (response.ok) {
+        setEditFolderName('');
+        setEditFolderColor('#3B82F6');
+        setEditFolderData(null);
+        setShowEditFolderModal(false);
+        await fetchFolders();
+        setNotification({
+          type: 'success',
+          message: 'Folder updated successfully'
+        });
+        setTimeout(() => setNotification(null), 3000);
+      }
+    } catch (error) {
+      console.error('Error updating folder:', error);
+      setNotification({
+        type: 'error',
+        message: 'Failed to update folder'
+      });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  };
+
   const selectFolder = (folder) => {
     setSelectedFolder(folder);
     if (folder === null) {
@@ -456,6 +510,13 @@ const Dashboard = () => {
     setItemToDelete(folder);
     setDeleteType('folder');
     setShowDeleteModal(true);
+  };
+
+  const handleEditFolder = (folder) => {
+    setEditFolderData(folder);
+    setEditFolderName(folder.name);
+    setEditFolderColor(folder.color);
+    setShowEditFolderModal(true);
   };
 
   const confirmDelete = async (deleteAllResearch = false) => {
@@ -755,6 +816,7 @@ const Dashboard = () => {
                       isDragging={activeId === `folder-${folder.id}`}
                       isDraggingFolder={isDraggingFolder}
                       onDelete={handleDeleteFolder}
+                      onEdit={handleEditFolder}
                     />
                   ))}
                 </SortableContext>
@@ -894,6 +956,63 @@ const Dashboard = () => {
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Folder Modal */}
+      {showEditFolderModal && editFolderData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Folder</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Folder Name</label>
+              <input
+                type="text"
+                value={editFolderName}
+                onChange={(e) => setEditFolderName(e.target.value)}
+                placeholder="Enter folder name..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+              <div className="flex space-x-2">
+                {colors.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setEditFolderColor(color)}
+                    className={`w-8 h-8 rounded-full border-2 ${
+                      editFolderColor === color ? 'border-gray-900' : 'border-gray-300'
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  setShowEditFolderModal(false);
+                  setEditFolderData(null);
+                  setEditFolderName('');
+                  setEditFolderColor('#3B82F6');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={updateFolder}
+                disabled={!editFolderName.trim()}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Update
               </button>
             </div>
           </div>
