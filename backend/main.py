@@ -49,6 +49,20 @@ class ConversationMove(BaseModel):
     conversation_id: int
     folder_id: Optional[int] = None
 
+class FolderReorder(BaseModel):
+    folder_ids: List[int]
+
+class ArticleComparisonRequest(BaseModel):
+    article1_url: Optional[str] = None
+    article1_text: Optional[str] = None
+    article1_title: Optional[str] = None
+    article2_url: Optional[str] = None
+    article2_text: Optional[str] = None
+    article2_title: Optional[str] = None
+    comparison_focus: Optional[str] = None  # e.g., "methodology", "findings", "overall"
+    context: Optional[str] = None  # e.g., "Topic: climate justice", "Assignment: compare methods"
+    folder_id: Optional[int] = None
+
 # --- Helper Functions ---
 async def get_user_from_token(access_token: str):
     """Validates JWT token and returns user information."""
@@ -317,6 +331,181 @@ Format: Return only the 5 questions, one per line, without numbering or bullet p
             "What are the policy implications and recommendations?"
         ]
 
+async def extract_article_content(url: str) -> Dict[str, str]:
+    """Extracts article content from a URL using web scraping."""
+    try:
+        # Use Tavily to get article content
+        response = tavily_client.search(query=f"site:{url}", search_depth="basic", max_results=1)
+        if response['results']:
+            result = response['results'][0]
+            return {
+                'title': result.get('title', ''),
+                'content': result.get('content', ''),
+                'url': result.get('url', url)
+            }
+        return {'title': '', 'content': '', 'url': url}
+    except Exception as e:
+        print(f"Error extracting article content: {e}")
+        return {'title': '', 'content': '', 'url': url}
+
+async def generate_article_comparison_report(article1: Dict, article2: Dict, focus: str = "overall", context: str = None) -> str:
+    """Generates a smart academic comparison report between two articles."""
+    
+    focus_instructions = {
+        "methodology": "Focus primarily on comparing research methods, data collection approaches, analytical frameworks, and experimental design.",
+        "findings": "Concentrate on comparing key findings, results, conclusions, and evidence presented in both articles.",
+        "overall": "Provide a comprehensive comparison covering all aspects including methodology, findings, writing style, and implications."
+    }
+    
+    focus_instruction = focus_instructions.get(focus, focus_instructions["overall"])
+    
+    # Context instruction
+    context_instruction = ""
+    context_relevance_instruction = ""
+    if context:
+        context_instruction = f"""
+**CONTEXT-DRIVEN ANALYSIS:** The user has provided this context: "{context}"
+- Tailor your entire analysis to be relevant to this context
+- Include specific relevance scores for how well each article aligns with this context
+- Provide practical insights for how this comparison serves the user's specific need
+"""
+        context_relevance_instruction = f"""
+- Include a "Context Relevance" score showing how well each article aligns with "{context}" (1-10 scale)
+- Add topic integration insights specific to "{context}"
+"""
+    
+    comparison_prompt = f"""You are a smart academic assistant helping students with article comparison. You generate structured, actionable reports that help students understand and use academic literature effectively. {focus_instruction} {context_instruction}
+
+**ARTICLE 1:**
+Title: {article1.get('title', 'Article 1')}
+Content: {article1.get('content', '')[:3000]}...
+
+**ARTICLE 2:**
+Title: {article2.get('title', 'Article 2')}
+Content: {article2.get('content', '')[:3000]}...
+
+**REQUIRED OUTPUT STRUCTURE:**
+
+# Smart Academic Article Comparison
+
+## 1. Executive Summary
+• 4-5 bullet points comparing both articles in key dimensions
+• ✓ Similarities
+• ✓ Differences  
+• ✓ Overall alignment with context (if provided)
+
+## 2. Comparative Overview
+Generate a clean comparison table:
+
+| Feature | Article 1: {article1.get('title', 'Article 1')} | Article 2: {article2.get('title', 'Article 2')} |
+|---------|------------|------------|
+| **Title** | "{article1.get('title', 'Article 1')}" | "{article2.get('title', 'Article 2')}" |
+| **Thesis** | [Brief thesis summary] | [Brief thesis summary] |
+| **Methodology** | [Qualitative/Quantitative/Mixed/Other with brief description] | [Qualitative/Quantitative/Mixed/Other with brief description] |
+| **Main Finding** | [Key finding in 1-2 sentences] | [Key finding in 1-2 sentences] |
+| **Context Relevance** 🔍 | [If context provided: relevance description] | [If context provided: relevance description] |
+
+## 3. Detailed Comparative Analysis
+
+### Methodology (depth, transparency, sample size)
+- **Article 1 Strengths/Weaknesses:** [Brief assessment]
+- **Article 2 Strengths/Weaknesses:** [Brief assessment]
+- **Comparative Assessment:** [Which is stronger and why]
+
+### Evidence Quality (sources, data strength)
+- **Article 1:** [Evidence quality assessment]
+- **Article 2:** [Evidence quality assessment]
+- **Comparison:** [Relative strengths in evidence]
+
+### Practical Implications (real-world value)
+- **Article 1 Applications:** [Practical value]
+- **Article 2 Applications:** [Practical value]
+- **Combined Value:** [How they work together]
+
+### Theoretical Frameworks (explicit vs. implicit)
+- **Article 1 Theory:** [Theoretical approach]
+- **Article 2 Theory:** [Theoretical approach]
+- **Framework Alignment:** [Compatibility/conflicts]
+
+### Scholarly Rigor (citations, journal type)
+- **Article 1 Rigor:** [Academic quality assessment]
+- **Article 2 Rigor:** [Academic quality assessment]
+
+## 4. Synthesis
+- **Complementary Insights:** How do these articles work together?
+- **Conflicting Areas:** Where do they disagree?
+- **Reader Benefits:** What does a student gain by reading both?
+
+## 5. Critical Assessment
+- **Strengths & Weaknesses:** Honest assessment of each article
+- **Biases or Blind Spots:** What might each article be missing?
+- **Research Quality:** Which article is methodologically stronger?
+
+## 6. Topic Integration{context_relevance_instruction}
+[If context provided, include:]
+- **Relevance Assessment:** How both articles connect to the user's context
+- **Alignment Summary:** Which article is more aligned with the context and why
+- **Integration Example:** Sample paragraph showing how to discuss both articles together
+
+## 7. Final Recommendation
+- **For Methodology:** Which article to cite for methodological approaches
+- **For Evidence:** Which provides stronger evidence base
+- **For Your Assignment:** Specific recommendations based on the context provided
+- **Citation Strategy:** How to use both articles effectively
+
+---
+
+**MANDATORY JSON OUTPUT:**
+End your response with this exact format:
+
+```json
+{{
+  "graph_data": {{
+    "title": "Article Comparison Analysis",
+    "type": "bar",
+    "data": [
+      {{"name": "Methodology Rigor", "value": [Score1_1-10], "value2": [Score2_1-10]}},
+      {{"name": "Evidence Quality", "value": [Score1_1-10], "value2": [Score2_1-10]}},
+      {{"name": "Practical Relevance", "value": [Score1_1-10], "value2": [Score2_1-10]}},
+      {{"name": "Theoretical Depth", "value": [Score1_1-10], "value2": [Score2_1-10]}}{context_relevance_instruction and ', {{"name": "Context Relevance", "value": [Score1_1-10], "value2": [Score2_1-10]}}' or ''}
+    ],
+    "x_label": "Evaluation Criteria",
+    "y_label": "Score (1-10)",
+    "description": "Comparative scoring showing Article A vs Article B across key academic criteria",
+    "key_insight": "📊 [Clear insight about which article is stronger for what purpose - relate to user's context if provided]",
+    "why_matters": "[Explain why this comparison helps the student/researcher - be specific to their context if provided]",
+    "insight_type": "primary",
+    "ai_insights": [
+      "✅ [Methodological insight - which article has better research design and why]",
+      "🔍 [Evidence insight - which provides stronger support for claims]",
+      "🚀 [Practical insight - how to use both articles effectively for the user's purpose]"
+    ],
+    "comparison_summary": {{
+      "similarity_score": [0-100],
+      "key_differences": ["[Specific difference 1]", "[Specific difference 2]", "[Specific difference 3]"],
+      "complementary_areas": ["[How they work together 1]", "[How they work together 2]"],
+      "conflicting_areas": ["[Where they disagree 1]", "[Where they disagree 2]"],
+      "student_recommendation": "[Which article to prioritize for the user's specific context/assignment]",
+      "citation_strategy": "[How to cite both articles effectively]"
+    }}
+  }}
+}}
+```
+
+CRITICAL: Make this analysis student-focused and actionable. If context is provided, tailor everything to help with that specific assignment/topic. Be practical, not just academic."""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": comparison_prompt}],
+            max_tokens=5000,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error generating comparison report: {e}")
+        return f"Error generating comparison report: {e}"
+
 # --- API Endpoints ---
 @app.get("/")
 async def root():
@@ -332,7 +521,8 @@ async def get_folders(authorization: str = Header(...)):
         if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Get folders with conversation counts
+        # Get folders with conversation counts, ordered by created_at for now
+        # TODO: Add sort_order column to database schema and update this query
         folders_query = supabase.table("folders").select("*").eq("user_id", user.id).order("created_at", desc=False)
         folders_response = folders_query.execute()
         
@@ -422,6 +612,38 @@ async def delete_folder(folder_id: int, authorization: str = Header(...)):
         return {"message": "Folder deleted successfully"}
     except Exception as e:
         print(f"Error in delete_folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/folders/reorder")
+async def reorder_folders(reorder_data: FolderReorder, authorization: str = Header(...)):
+    """Reorders folders by updating their created_at timestamp to maintain order."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Verify all folders belong to the user
+        for folder_id in reorder_data.folder_ids:
+            folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+            if not folder_check.data:
+                raise HTTPException(status_code=404, detail=f"Folder {folder_id} not found or access denied")
+        
+        # Update each folder's created_at to maintain the desired order
+        # We'll set timestamps with minute intervals to preserve order
+        from datetime import datetime, timedelta
+        base_time = datetime.now()
+        
+        for index, folder_id in enumerate(reorder_data.folder_ids):
+            # Set created_at with incremental timestamps to maintain order
+            new_timestamp = base_time + timedelta(minutes=index)
+            supabase.table("folders").update({
+                "created_at": new_timestamp.isoformat()
+            }).eq("id", folder_id).execute()
+        
+        return {"message": "Folders reordered successfully"}
+    except Exception as e:
+        print(f"Error in reorder_folders: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/conversations/move")
@@ -563,5 +785,111 @@ async def run_research(request: ResearchRequest, authorization: str = Header(...
         return {"conversation_id": convo_id, "new_messages": message_res.data}
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/compare-articles")
+async def compare_articles(request: ArticleComparisonRequest, authorization: str = Header(...)):
+    """Compares two articles and generates a comprehensive comparison report."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Validate that we have at least two articles to compare
+        if not ((request.article1_url or request.article1_text) and (request.article2_url or request.article2_text)):
+            raise HTTPException(status_code=400, detail="Both articles must be provided (either URL or text)")
+
+        # Extract article content
+        article1 = {}
+        article2 = {}
+
+        if request.article1_url:
+            article1 = await extract_article_content(request.article1_url)
+        else:
+            article1 = {
+                'title': request.article1_title or 'Article 1',
+                'content': request.article1_text or '',
+                'url': ''
+            }
+
+        if request.article2_url:
+            article2 = await extract_article_content(request.article2_url)
+        else:
+            article2 = {
+                'title': request.article2_title or 'Article 2',
+                'content': request.article2_text or '',
+                'url': ''
+            }
+
+        # Generate comparison report
+        comparison_report = await generate_article_comparison_report(
+            article1, 
+            article2, 
+            request.comparison_focus or "overall",
+            request.context
+        )
+
+        # Create conversation for the comparison
+        title = f"Article Comparison: {article1.get('title', 'Article 1')} vs {article2.get('title', 'Article 2')}"
+        conversation_data = {"user_id": user.id, "title": title}
+        if request.folder_id:
+            conversation_data["folder_id"] = request.folder_id
+        
+        convo_res = supabase.table("conversations").insert(conversation_data).execute()
+        convo_id = convo_res.data[0]['id']
+
+        # Save user's comparison request
+        user_message_content = f"Compare these two articles:\n\n**Article 1:** {article1.get('title', 'Article 1')}\n"
+        if article1.get('url'):
+            user_message_content += f"URL: {article1['url']}\n"
+        user_message_content += f"\n**Article 2:** {article2.get('title', 'Article 2')}\n"
+        if article2.get('url'):
+            user_message_content += f"URL: {article2['url']}\n"
+        if request.comparison_focus:
+            user_message_content += f"\n**Focus:** {request.comparison_focus}"
+        if request.context:
+            user_message_content += f"\n**Context:** {request.context}"
+
+        supabase.table("messages").insert({
+            "conversation_id": convo_id,
+            "role": "user",
+            "content": user_message_content
+        }).execute()
+
+        # Process and save the comparison report
+        report_content = comparison_report
+        metadata_json = {}
+        
+        if "```json" in comparison_report:
+            try:
+                json_str = comparison_report.split("```json")[1].split("```")[0].strip()
+                metadata_json = json.loads(json_str)
+                report_content = comparison_report.split("```json")[0].strip()
+            except (json.JSONDecodeError, IndexError) as e:
+                print(f"Error parsing comparison metadata JSON: {e}")
+                metadata_json = {"error": "Failed to parse comparison metadata"}
+
+        # Add comparison-specific metadata
+        metadata_json["comparison_type"] = "article_comparison"
+        metadata_json["article1_title"] = article1.get('title', 'Article 1')
+        metadata_json["article2_title"] = article2.get('title', 'Article 2')
+        metadata_json["comparison_focus"] = request.comparison_focus or "overall"
+        metadata_json["context"] = request.context
+
+        message_to_save = {
+            "conversation_id": convo_id,
+            "role": "assistant",
+            "model_name": "Article Comparison Report",
+            "content": report_content,
+            "metadata": metadata_json
+        }
+
+        message_res = supabase.table("messages").insert(message_to_save).execute()
+
+        return {"conversation_id": convo_id, "new_messages": message_res.data}
+
+    except Exception as e:
+        print(f"Error in compare_articles: {e}")
         raise HTTPException(status_code=500, detail=str(e))
  

@@ -2,6 +2,224 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+
+// Draggable Research Card Component
+const DraggableResearchCard = ({ conversation, onOpen }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: conversation.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => onOpen(conversation)}
+      className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer group ${
+        isDragging ? 'opacity-50 cursor-grabbing' : ''
+      }`}
+    >
+            <div className="flex items-start justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2 flex-1 pr-2">
+          {conversation.title}
+        </h3>
+        <div className="flex items-center space-x-2 flex-shrink-0">
+          <div className="relative group/drag">
+            <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group/drag:hover:text-blue-700 transition-colors cursor-grab" fill="currentColor" viewBox="0 0 24 24" title="Drag to move to folder">
+              <circle cx="9" cy="7" r="1.5"/>
+              <circle cx="9" cy="12" r="1.5"/>
+              <circle cx="9" cy="17" r="1.5"/>
+              <circle cx="15" cy="7" r="1.5"/>
+              <circle cx="15" cy="12" r="1.5"/>
+              <circle cx="15" cy="17" r="1.5"/>
+            </svg>
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group/drag:hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+              Drag to folder
+            </div>
+          </div>
+          <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+      
+      <div className="flex items-center text-sm text-gray-500 mb-4">
+        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v16a2 2 0 002 2z" />
+        </svg>
+        {new Date(conversation.created_at).toLocaleDateString()}
+      </div>
+
+      <div className="h-20 bg-gray-50 rounded-lg flex items-center justify-center">
+        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2V7a2 2 0 012-2h2a2 2 0 002 2v2a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 00-2 2h-2a2 2 0 00-2 2v6a2 2 0 01-2 2H9z" />
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+// Droppable Folder Component
+const DroppableFolderButton = ({ folder, isSelected, onSelect, isOver, id, isDraggingFolder = false }) => {
+  const { setNodeRef } = useSortable({ id: id });
+  
+  const baseClasses = `w-full text-left p-3 rounded-lg transition-colors ${
+    isSelected
+      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+      : 'hover:bg-gray-50 text-gray-700'
+  }`;
+  
+  const overClasses = isOver ? 'bg-green-50 border-green-300 border-2 shadow-md' : '';
+  const dropHintClasses = isOver ? 'text-green-700' : '';
+  
+  return (
+    <button
+      ref={setNodeRef}
+      onClick={() => onSelect(folder)}
+      className={`${baseClasses} ${overClasses}`}
+    >
+      <div className="flex items-center">
+        <div
+          className="w-4 h-4 rounded mr-3"
+          style={{ backgroundColor: folder?.color || '#6B7280' }}
+        ></div>
+        <span className={`font-medium ${dropHintClasses}`}>{folder?.name || 'All Research'}</span>
+        {isOver && !isDraggingFolder && (
+          <svg className="w-4 h-4 ml-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        )}
+      </div>
+      <p className={`text-sm ml-7 ${isOver && !isDraggingFolder ? 'text-green-600' : 'text-gray-500'}`}>
+        {isOver && !isDraggingFolder ? 'Drop here to move' : `${folder?.conversation_count || 0} reports`}
+      </p>
+    </button>
+  );
+};
+
+// Draggable & Droppable Folder Component
+const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, isOverForReorder, isDragging, isDraggingFolder }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setSortableNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: `folder-${folder.id}` });
+
+  const { setNodeRef: setDroppableNodeRef } = useDroppable({
+    id: folder.id,
+  });
+
+  const setNodeRef = (node) => {
+    setSortableNodeRef(node);
+    setDroppableNodeRef(node);
+  };
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  
+  const baseClasses = `w-full text-left p-3 rounded-lg transition-colors ${
+    isSelected
+      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+      : 'hover:bg-gray-50 text-gray-700'
+  }`;
+  
+  // Different visual feedback for different drop types
+  let overClasses = '';
+  let statusMessage = `${folder.conversation_count} reports`;
+  
+  if (isOverForReorder && isDraggingFolder) {
+    overClasses = 'bg-blue-100 border-blue-300 border-2 shadow-md';
+    statusMessage = 'Drop here to reorder';
+  } else if (isOverForDrop && !isDraggingFolder) {
+    overClasses = 'bg-green-50 border-green-300 border-2 shadow-md';
+    statusMessage = 'Drop here to move';
+  }
+  
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${baseClasses} ${overClasses} cursor-pointer group/folder`}
+      {...attributes}
+    >
+      <div className="flex items-center justify-between" onClick={() => onSelect(folder)}>
+        <div className="flex items-center flex-1">
+          <div
+            className="w-4 h-4 rounded mr-3"
+            style={{ backgroundColor: folder.color }}
+          ></div>
+          <span className={`font-medium ${isOverForDrop && !isDraggingFolder ? 'text-green-700' : ''}`}>
+            {folder.name}
+          </span>
+          {isOverForDrop && !isDraggingFolder && (
+            <svg className="w-4 h-4 ml-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          )}
+        </div>
+        <div
+          {...listeners}
+          className="p-1 opacity-0 group-hover/folder:opacity-100 transition-opacity cursor-grab hover:bg-gray-200 rounded"
+          onClick={(e) => e.stopPropagation()}
+          title="Drag to reorder"
+        >
+          <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="9" cy="7" r="1"/>
+            <circle cx="9" cy="12" r="1"/>
+            <circle cx="9" cy="17" r="1"/>
+            <circle cx="15" cy="7" r="1"/>
+            <circle cx="15" cy="12" r="1"/>
+            <circle cx="15" cy="17" r="1"/>
+          </svg>
+        </div>
+      </div>
+      <p className={`text-sm ml-7 ${
+        isOverForDrop && !isDraggingFolder ? 'text-green-600' : 
+        isOverForReorder && isDraggingFolder ? 'text-blue-600' : 
+        'text-gray-500'
+      }`}>
+        {statusMessage}
+      </p>
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const [folders, setFolders] = useState([]);
@@ -14,9 +232,20 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalReports: 0, thisWeek: 0, totalFolders: 0 });
   const [allConversations, setAllConversations] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const [notification, setNotification] = useState(null);
+  const [isDraggingFolder, setIsDraggingFolder] = useState(false);
 
   const { token } = useAuth();
   const navigate = useNavigate();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const colors = [
     '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
@@ -119,7 +348,169 @@ const Dashboard = () => {
 
   const selectFolder = (folder) => {
     setSelectedFolder(folder);
-    fetchConversations(folder?.id);
+    if (folder === null) {
+      // When selecting "All Research", show all conversations
+      setConversations(allConversations);
+    } else {
+      fetchConversations(folder.id);
+    }
+  };
+
+  const moveConversationToFolder = async (conversationId, folderId) => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/conversations/move', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          folder_id: folderId
+        })
+      });
+
+      if (response.ok) {
+        // Refresh data to reflect the move
+        await fetchData();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error moving conversation:', error);
+      return false;
+    }
+  };
+
+  const reorderFolders = async (newOrder) => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/folders/reorder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          folder_ids: newOrder
+        })
+      });
+
+      if (response.ok) {
+        // Update local state immediately for better UX
+        const reorderedFolders = newOrder.map(id => folders.find(f => f.id === id));
+        setFolders(reorderedFolders);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error reordering folders:', error);
+      return false;
+    }
+  };
+
+  const handleDragStart = (event) => {
+    const { active } = event;
+    setActiveId(active.id);
+    
+    // Check if we're dragging a folder
+    const isFolderDrag = active.id.toString().startsWith('folder-');
+    setIsDraggingFolder(isFolderDrag);
+  };
+
+  const handleDragOver = (event) => {
+    const { over } = event;
+    setOverId(over?.id);
+  };
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    
+    setActiveId(null);
+    setOverId(null);
+    setIsDraggingFolder(false);
+
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    // Handle folder reordering
+    if (activeId.toString().startsWith('folder-') && overId.toString().startsWith('folder-')) {
+      const activeFolderId = parseInt(activeId.toString().replace('folder-', ''));
+      const overFolderId = parseInt(overId.toString().replace('folder-', ''));
+      
+      if (activeFolderId !== overFolderId) {
+        const oldIndex = folders.findIndex(f => f.id === activeFolderId);
+        const newIndex = folders.findIndex(f => f.id === overFolderId);
+        
+        // Create new order array
+        const newFolders = [...folders];
+        const [removed] = newFolders.splice(oldIndex, 1);
+        newFolders.splice(newIndex, 0, removed);
+        
+        // Update state immediately for better UX
+        setFolders(newFolders);
+        
+        // Send new order to backend
+        const newOrder = newFolders.map(f => f.id);
+        const success = await reorderFolders(newOrder);
+        
+        if (success) {
+          setNotification({
+            type: 'success',
+            message: 'Folders reordered successfully'
+          });
+          setTimeout(() => setNotification(null), 3000);
+        } else {
+          // Revert on failure
+          await fetchFolders();
+          setNotification({
+            type: 'error',
+            message: 'Failed to reorder folders'
+          });
+          setTimeout(() => setNotification(null), 3000);
+        }
+      }
+      return;
+    }
+
+    // Handle conversation moving to folders (existing logic)
+    if (!activeId.toString().startsWith('folder-')) {
+      const draggedConversationId = activeId;
+      const droppedOnId = overId;
+
+      // Check if dropped on a folder
+      const targetFolder = folders.find(f => f.id === droppedOnId);
+      const isDroppedOnAllResearch = droppedOnId === 'all-research';
+      
+      if (targetFolder || isDroppedOnAllResearch) {
+        const targetFolderId = isDroppedOnAllResearch ? null : targetFolder.id;
+        
+        // Find the conversation being moved
+        const conversation = conversations.find(c => c.id === draggedConversationId);
+        
+        // Only move if it's actually changing folders
+        if (conversation && conversation.folder_id !== targetFolderId) {
+          const success = await moveConversationToFolder(draggedConversationId, targetFolderId);
+          
+          if (success) {
+            // Show success feedback
+            setNotification({
+              type: 'success',
+              message: `Moved "${conversation.title}" to ${targetFolder?.name || 'All Research'}`
+            });
+            setTimeout(() => setNotification(null), 3000);
+          } else {
+            // Show error feedback
+            setNotification({
+              type: 'error',
+              message: 'Failed to move conversation'
+            });
+            setTimeout(() => setNotification(null), 3000);
+          }
+        }
+      }
+    }
   };
 
   const startNewResearch = () => {
@@ -150,10 +541,17 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Research Dashboard</h1>
@@ -226,45 +624,34 @@ const Dashboard = () => {
               </div>
 
               <div className="space-y-2">
-                {/* All Research */}
-                <button
-                  onClick={() => selectFolder(null)}
-                  className={`w-full text-left p-3 rounded-lg transition-colors ${
-                    selectedFolder === null
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'hover:bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  <div className="flex items-center">
-                    <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V9a2 2 0 00-2-2H7a2 2 0 00-2 2v2" />
-                    </svg>
-                    <span className="font-medium">All Research</span>
-                  </div>
-                  <p className="text-sm text-gray-500 ml-8">{allConversations.length} reports</p>
-                </button>
+                {/* All Research - Not draggable, only droppable */}
+                <DroppableFolderButton
+                  id="all-research"
+                  folder={{ name: 'All Research', conversation_count: allConversations.length, color: '#6B7280' }}
+                  isSelected={selectedFolder === null}
+                  onSelect={() => selectFolder(null)}
+                  isOver={overId === 'all-research'}
+                  isDraggingFolder={isDraggingFolder}
+                />
 
-                {/* Folder List */}
-                {folders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    onClick={() => selectFolder(folder)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      selectedFolder?.id === folder.id
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                        : 'hover:bg-gray-50 text-gray-700'
-                    }`}
-                  >
-                    <div className="flex items-center">
-                      <div
-                        className="w-4 h-4 rounded mr-3"
-                        style={{ backgroundColor: folder.color }}
-                      ></div>
-                      <span className="font-medium">{folder.name}</span>
-                    </div>
-                    <p className="text-sm text-gray-500 ml-7">{folder.conversation_count} reports</p>
-                  </button>
-                ))}
+                {/* Draggable/Droppable Folder List */}
+                <SortableContext 
+                  items={[...folders.map(f => `folder-${f.id}`), ...folders.map(f => f.id)]} 
+                  strategy={verticalListSortingStrategy}
+                >
+                  {folders.map((folder) => (
+                    <DraggableFolderButton
+                      key={folder.id}
+                      folder={folder}
+                      isSelected={selectedFolder?.id === folder.id}
+                      onSelect={() => selectFolder(folder)}
+                      isOverForDrop={overId === folder.id}
+                      isOverForReorder={overId === `folder-${folder.id}`}
+                      isDragging={activeId === `folder-${folder.id}`}
+                      isDraggingFolder={isDraggingFolder}
+                    />
+                  ))}
+                </SortableContext>
               </div>
             </div>
           </div>
@@ -281,15 +668,26 @@ const Dashboard = () => {
                     : 'Begin your next research project with AI-powered insights'
                   }
                 </p>
-                <button
-                  onClick={startNewResearch}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center"
-                >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  Start Research
-                </button>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <button
+                    onClick={startNewResearch}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center justify-center"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Start Research
+                  </button>
+                  <button
+                    onClick={() => navigate('/compare')}
+                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center justify-center"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    Compare Articles
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -310,37 +708,20 @@ const Dashboard = () => {
             </div>
 
             {/* Research Reports Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredConversations.map((conversation) => (
-                <div
-                  key={conversation.id}
-                  onClick={() => openConversation(conversation)}
-                  className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">
-                      {conversation.title}
-                    </h3>
-                    <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  
-                  <div className="flex items-center text-sm text-gray-500 mb-4">
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v16a2 2 0 002 2z" />
-                    </svg>
-                    {new Date(conversation.created_at).toLocaleDateString()}
-                  </div>
-
-                  <div className="h-20 bg-gray-50 rounded-lg flex items-center justify-center">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2V7a2 2 0 012-2h2a2 2 0 002 2v2a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 00-2 2h-2a2 2 0 00-2 2v6a2 2 0 01-2 2H9z" />
-                    </svg>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <SortableContext 
+              items={filteredConversations.map(c => c.id)} 
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {filteredConversations.map((conversation) => (
+                  <DraggableResearchCard
+                    key={conversation.id}
+                    conversation={conversation}
+                    onOpen={openConversation}
+                  />
+                ))}
+              </div>
+            </SortableContext>
 
             {filteredConversations.length === 0 && (
               <div className="text-center py-12">
@@ -411,7 +792,61 @@ const Dashboard = () => {
           </div>
         </div>
       )}
-    </div>
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
+          notification.type === 'success' 
+            ? 'bg-green-50 border border-green-300 text-green-800' 
+            : 'bg-red-50 border border-red-300 text-red-800'
+        }`}>
+          <div className="flex items-center">
+            {notification.type === 'success' ? (
+              <svg className="w-5 h-5 mr-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 mr-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="text-sm font-medium">{notification.message}</span>
+          </div>
+        </div>
+      )}
+      </div>
+      
+      <DragOverlay>
+        {activeId ? (
+          <div className="bg-white rounded-xl shadow-lg border-2 border-blue-300 p-6 opacity-90">
+            <div className="flex items-center space-x-3">
+              {isDraggingFolder ? (
+                <>
+                  <div
+                    className="w-4 h-4 rounded"
+                    style={{ 
+                      backgroundColor: folders.find(f => f.id === parseInt(activeId.toString().replace('folder-', '')))?.color || '#6B7280'
+                    }}
+                  ></div>
+                  <span className="font-medium text-gray-900">
+                    {folders.find(f => f.id === parseInt(activeId.toString().replace('folder-', '')))?.name || 'Folder'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span className="font-medium text-gray-900">
+                    {conversations.find(c => c.id === activeId)?.title || 'Research Report'}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 };
 
