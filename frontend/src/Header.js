@@ -31,32 +31,6 @@ const Header = () => {
             <span className="text-xl font-bold text-gray-900">DeepResearch</span>
           </Link>
 
-                     {/* Navigation */}
-           {user && (
-             <nav className="hidden md:flex space-x-8">
-               <Link 
-                 to="/dashboard" 
-                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                   isActive('/dashboard') || isActive('/')
-                     ? 'text-blue-600 bg-blue-50' 
-                     : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
-                 }`}
-               >
-                 Dashboard
-               </Link>
-               <Link 
-                 to="/research" 
-                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                   isActive('/research')
-                     ? 'text-blue-600 bg-blue-50' 
-                     : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
-                 }`}
-               >
-                 New Research
-               </Link>
-             </nav>
-           )}
-
           {/* User Menu */}
           {user ? (
             <div className="relative">

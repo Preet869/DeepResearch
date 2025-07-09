@@ -57,6 +57,7 @@ class ArticleComparisonRequest(BaseModel):
     article2_text: Optional[str] = None
     article2_title: Optional[str] = None
     comparison_focus: Optional[str] = None  # e.g., "methodology", "findings", "overall"
+    context: Optional[str] = None  # e.g., "Topic: climate justice", "Assignment: compare methods"
     folder_id: Optional[int] = None
 
 # --- Helper Functions ---
@@ -344,8 +345,8 @@ async def extract_article_content(url: str) -> Dict[str, str]:
         print(f"Error extracting article content: {e}")
         return {'title': '', 'content': '', 'url': url}
 
-async def generate_article_comparison_report(article1: Dict, article2: Dict, focus: str = "overall") -> str:
-    """Generates a comprehensive comparison report between two articles."""
+async def generate_article_comparison_report(article1: Dict, article2: Dict, focus: str = "overall", context: str = None) -> str:
+    """Generates a smart academic comparison report between two articles."""
     
     focus_instructions = {
         "methodology": "Focus primarily on comparing research methods, data collection approaches, analytical frameworks, and experimental design.",
@@ -355,21 +356,22 @@ async def generate_article_comparison_report(article1: Dict, article2: Dict, foc
     
     focus_instruction = focus_instructions.get(focus, focus_instructions["overall"])
     
-    comparison_prompt = f"""You are an expert academic reviewer conducting a comprehensive comparative analysis of two research articles. {focus_instruction}
-
-**CRITICAL REQUIREMENTS:**
-
-1. **MANDATORY COMPARATIVE VISUALIZATION:** You MUST generate a `graph_data` JSON block with meaningful comparison metrics.
-   - Create quantitative comparisons (similarity scores, difference metrics, coverage areas)
-   - Generate compelling insights about how the articles compare
-   - Use appropriate chart types for comparison data
-   - Include specific metrics like methodology similarity, finding alignment, citation overlap, etc.
-
-2. **STRUCTURED COMPARISON ANALYSIS:**
-   - Provide detailed side-by-side analysis
-   - Identify similarities, differences, and unique contributions
-   - Assess methodological rigor and evidence quality
-   - Evaluate implications and significance
+    # Context instruction
+    context_instruction = ""
+    context_relevance_instruction = ""
+    if context:
+        context_instruction = f"""
+**CONTEXT-DRIVEN ANALYSIS:** The user has provided this context: "{context}"
+- Tailor your entire analysis to be relevant to this context
+- Include specific relevance scores for how well each article aligns with this context
+- Provide practical insights for how this comparison serves the user's specific need
+"""
+        context_relevance_instruction = f"""
+- Include a "Context Relevance" score showing how well each article aligns with "{context}" (1-10 scale)
+- Add topic integration insights specific to "{context}"
+"""
+    
+    comparison_prompt = f"""You are a smart academic assistant helping students with article comparison. You generate structured, actionable reports that help students understand and use academic literature effectively. {focus_instruction} {context_instruction}
 
 **ARTICLE 1:**
 Title: {article1.get('title', 'Article 1')}
@@ -379,67 +381,74 @@ Content: {article1.get('content', '')[:3000]}...
 Title: {article2.get('title', 'Article 2')}
 Content: {article2.get('content', '')[:3000]}...
 
-**REPORT STRUCTURE:**
+**REQUIRED OUTPUT STRUCTURE:**
 
-# Comparative Analysis: {article1.get('title', 'Article 1')} vs {article2.get('title', 'Article 2')}
+# Smart Academic Article Comparison
 
-## Executive Summary
-• 4-5 bullet points highlighting key similarities and differences
-• Overall assessment of how the articles complement or contradict each other
+## 1. Executive Summary
+• 4-5 bullet points comparing both articles in key dimensions
+• ✓ Similarities
+• ✓ Differences  
+• ✓ Overall alignment with context (if provided)
 
-## Comparative Overview
-### Article 1: {article1.get('title', 'Article 1')}
-- Brief summary of main thesis and approach
-- Key methodological features
-- Primary findings and conclusions
+## 2. Comparative Overview
+Generate a clean comparison table:
 
-### Article 2: {article2.get('title', 'Article 2')}
-- Brief summary of main thesis and approach
-- Key methodological features
-- Primary findings and conclusions
+| Feature | Article 1: {article1.get('title', 'Article 1')} | Article 2: {article2.get('title', 'Article 2')} |
+|---------|------------|------------|
+| **Title** | "{article1.get('title', 'Article 1')}" | "{article2.get('title', 'Article 2')}" |
+| **Thesis** | [Brief thesis summary] | [Brief thesis summary] |
+| **Methodology** | [Qualitative/Quantitative/Mixed/Other with brief description] | [Qualitative/Quantitative/Mixed/Other with brief description] |
+| **Main Finding** | [Key finding in 1-2 sentences] | [Key finding in 1-2 sentences] |
+| **Context Relevance** 🔍 | [If context provided: relevance description] | [If context provided: relevance description] |
 
-## Detailed Comparative Analysis
+## 3. Detailed Comparative Analysis
 
-### Methodological Comparison
-- Compare research approaches, data sources, and analytical methods
-- Assess strengths and limitations of each approach
-- Identify complementary or conflicting methodologies
+### Methodology (depth, transparency, sample size)
+- **Article 1 Strengths/Weaknesses:** [Brief assessment]
+- **Article 2 Strengths/Weaknesses:** [Brief assessment]
+- **Comparative Assessment:** [Which is stronger and why]
 
-### Findings and Evidence Comparison
-- Side-by-side comparison of key findings
-- Areas of agreement and disagreement
-- Quality and strength of evidence presented
-- Statistical significance and practical implications
+### Evidence Quality (sources, data strength)
+- **Article 1:** [Evidence quality assessment]
+- **Article 2:** [Evidence quality assessment]
+- **Comparison:** [Relative strengths in evidence]
 
-### Theoretical Framework Comparison
-- Compare underlying theories and conceptual frameworks
-- Assess theoretical contributions and innovations
-- Identify gaps or overlaps in theoretical coverage
+### Practical Implications (real-world value)
+- **Article 1 Applications:** [Practical value]
+- **Article 2 Applications:** [Practical value]
+- **Combined Value:** [How they work together]
 
-### Practical Implications Comparison
-- Compare real-world applications and recommendations
-- Assess policy implications and actionable insights
-- Identify areas where articles complement each other
+### Theoretical Frameworks (explicit vs. implicit)
+- **Article 1 Theory:** [Theoretical approach]
+- **Article 2 Theory:** [Theoretical approach]
+- **Framework Alignment:** [Compatibility/conflicts]
 
-## Synthesis and Integration
-- How the articles can be read together for comprehensive understanding
-- Areas where one article fills gaps in the other
-- Conflicting viewpoints and potential reconciliation
+### Scholarly Rigor (citations, journal type)
+- **Article 1 Rigor:** [Academic quality assessment]
+- **Article 2 Rigor:** [Academic quality assessment]
 
-## Critical Assessment
-- Relative strengths and weaknesses of each article
-- Methodological rigor comparison
-- Contribution to the field assessment
+## 4. Synthesis
+- **Complementary Insights:** How do these articles work together?
+- **Conflicting Areas:** Where do they disagree?
+- **Reader Benefits:** What does a student gain by reading both?
 
-## Recommendations for Further Research
-- Research gaps identified across both articles
-- Suggested follow-up studies or investigations
-- Areas requiring additional evidence or analysis
+## 5. Critical Assessment
+- **Strengths & Weaknesses:** Honest assessment of each article
+- **Biases or Blind Spots:** What might each article be missing?
+- **Research Quality:** Which article is methodologically stronger?
 
-## Conclusion
-- Summary of key comparative insights
-- Overall assessment of how articles advance understanding
-- Recommendations for practitioners and researchers
+## 6. Topic Integration{context_relevance_instruction}
+[If context provided, include:]
+- **Relevance Assessment:** How both articles connect to the user's context
+- **Alignment Summary:** Which article is more aligned with the context and why
+- **Integration Example:** Sample paragraph showing how to discuss both articles together
+
+## 7. Final Recommendation
+- **For Methodology:** Which article to cite for methodological approaches
+- **For Evidence:** Which provides stronger evidence base
+- **For Your Assignment:** Specific recommendations based on the context provided
+- **Citation Strategy:** How to use both articles effectively
 
 ---
 
@@ -449,37 +458,38 @@ End your response with this exact format:
 ```json
 {{
   "graph_data": {{
-    "title": "Article Comparison Metrics",
+    "title": "Article Comparison Analysis",
     "type": "bar",
     "data": [
-      {{"name": "Methodology Rigor", "value": [Score1], "value2": [Score2]}},
-      {{"name": "Evidence Quality", "value": [Score1], "value2": [Score2]}},
-      {{"name": "Practical Relevance", "value": [Score1], "value2": [Score2]}},
-      {{"name": "Theoretical Depth", "value": [Score1], "value2": [Score2]}},
-      {{"name": "Citation Impact", "value": [Score1], "value2": [Score2]}}
+      {{"name": "Methodology Rigor", "value": [Score1_1-10], "value2": [Score2_1-10]}},
+      {{"name": "Evidence Quality", "value": [Score1_1-10], "value2": [Score2_1-10]}},
+      {{"name": "Practical Relevance", "value": [Score1_1-10], "value2": [Score2_1-10]}},
+      {{"name": "Theoretical Depth", "value": [Score1_1-10], "value2": [Score2_1-10]}}{context_relevance_instruction and ', {{"name": "Context Relevance", "value": [Score1_1-10], "value2": [Score2_1-10]}}' or ''}
     ],
-    "x_label": "Comparison Criteria",
+    "x_label": "Evaluation Criteria",
     "y_label": "Score (1-10)",
-    "description": "Comparative scoring of both articles across key evaluation criteria",
-    "key_insight": "📊 [Key insight about the comparison - e.g., 'Article 1 shows stronger methodology while Article 2 provides more practical applications']",
-    "why_matters": "[Explanation of why this comparison is significant for understanding the topic]",
+    "description": "Comparative scoring showing Article A vs Article B across key academic criteria",
+    "key_insight": "📊 [Clear insight about which article is stronger for what purpose - relate to user's context if provided]",
+    "why_matters": "[Explain why this comparison helps the student/researcher - be specific to their context if provided]",
     "insight_type": "primary",
     "ai_insights": [
-      "✅ [First insight about methodological differences or similarities]",
-      "🔍 [Second insight about finding alignment or contradictions]",
-      "🚀 [Third insight about combined implications or future directions]"
+      "✅ [Methodological insight - which article has better research design and why]",
+      "🔍 [Evidence insight - which provides stronger support for claims]",
+      "🚀 [Practical insight - how to use both articles effectively for the user's purpose]"
     ],
     "comparison_summary": {{
       "similarity_score": [0-100],
-      "key_differences": ["Difference 1", "Difference 2", "Difference 3"],
-      "complementary_areas": ["Area 1", "Area 2"],
-      "conflicting_areas": ["Area 1", "Area 2"]
+      "key_differences": ["[Specific difference 1]", "[Specific difference 2]", "[Specific difference 3]"],
+      "complementary_areas": ["[How they work together 1]", "[How they work together 2]"],
+      "conflicting_areas": ["[Where they disagree 1]", "[Where they disagree 2]"],
+      "student_recommendation": "[Which article to prioritize for the user's specific context/assignment]",
+      "citation_strategy": "[How to cite both articles effectively]"
     }}
   }}
 }}
 ```
 
-Remember: The comparison visualization and analysis are MANDATORY. Provide specific, actionable insights about how these articles relate to each other."""
+CRITICAL: Make this analysis student-focused and actionable. If context is provided, tailor everything to help with that specific assignment/topic. Be practical, not just academic."""
 
     try:
         response = await openai_client.chat.completions.create(
@@ -780,7 +790,8 @@ async def compare_articles(request: ArticleComparisonRequest, authorization: str
         comparison_report = await generate_article_comparison_report(
             article1, 
             article2, 
-            request.comparison_focus or "overall"
+            request.comparison_focus or "overall",
+            request.context
         )
 
         # Create conversation for the comparison
@@ -801,6 +812,8 @@ async def compare_articles(request: ArticleComparisonRequest, authorization: str
             user_message_content += f"URL: {article2['url']}\n"
         if request.comparison_focus:
             user_message_content += f"\n**Focus:** {request.comparison_focus}"
+        if request.context:
+            user_message_content += f"\n**Context:** {request.context}"
 
         supabase.table("messages").insert({
             "conversation_id": convo_id,
@@ -826,6 +839,7 @@ async def compare_articles(request: ArticleComparisonRequest, authorization: str
         metadata_json["article1_title"] = article1.get('title', 'Article 1')
         metadata_json["article2_title"] = article2.get('title', 'Article 2')
         metadata_json["comparison_focus"] = request.comparison_focus or "overall"
+        metadata_json["context"] = request.context
 
         message_to_save = {
             "conversation_id": convo_id,

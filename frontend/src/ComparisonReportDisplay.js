@@ -120,6 +120,7 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
       article1_title: mainReport.metadata.article1_title,
       article2_title: mainReport.metadata.article2_title,
       comparison_focus: mainReport.metadata.comparison_focus,
+      context: mainReport.metadata.context,
       content: mainReport.content,
       metadata: mainReport.metadata,
       exportedAt: new Date().toISOString()
@@ -133,6 +134,52 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
     URL.revokeObjectURL(url);
   };
 
+  // Enhanced granular export functions
+  const copyExecutiveSummary = () => {
+    const execSection = sections.find(s => s.title.toLowerCase().includes('executive summary'));
+    if (execSection) {
+      copyToClipboard(execSection.content.join('\n'), 'Executive Summary');
+    }
+  };
+
+  const copyComparisonTable = () => {
+    const overviewSection = sections.find(s => s.title.toLowerCase().includes('comparative overview'));
+    if (overviewSection) {
+      // Extract table content if it exists
+      const tableContent = overviewSection.content.find(line => line.includes('|'));
+      if (tableContent) {
+        const tableLines = overviewSection.content.filter(line => line.includes('|') || line.includes('---'));
+        copyToClipboard(tableLines.join('\n'), 'Comparison Table');
+      } else {
+        copyToClipboard(overviewSection.content.join('\n'), 'Comparative Overview');
+      }
+    }
+  };
+
+  const copySummaryCard = () => {
+    if (comparisonSummary) {
+      const summaryText = `
+# Comparison Summary
+
+**Similarity Score:** ${comparisonSummary.similarity_score}%
+
+**Key Differences:**
+${comparisonSummary.key_differences?.map(d => `• ${d}`).join('\n') || 'None listed'}
+
+**Complementary Areas:**
+${comparisonSummary.complementary_areas?.map(a => `• ${a}`).join('\n') || 'None listed'}
+
+**Conflicting Areas:**
+${comparisonSummary.conflicting_areas?.map(a => `• ${a}`).join('\n') || 'None listed'}
+
+${comparisonSummary.student_recommendation ? `**Student Recommendation:** ${comparisonSummary.student_recommendation}` : ''}
+
+${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSummary.citation_strategy}` : ''}
+      `.trim();
+      copyToClipboard(summaryText, 'Summary Card');
+    }
+  };
+
   const ComparisonSummaryCard = () => {
     if (!comparisonSummary) return null;
 
@@ -140,8 +187,19 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
       <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200 mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
           <span className="mr-2">📊</span>
-          Comparison Summary
+          Smart Comparison Summary
         </h3>
+        
+        {/* Context Display */}
+        {mainReport.metadata?.context && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center mb-1">
+              <span className="mr-2">🎯</span>
+              <span className="font-medium text-gray-900">Context</span>
+            </div>
+            <p className="text-sm text-gray-700">{mainReport.metadata.context}</p>
+          </div>
+        )}
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -197,6 +255,32 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
             </div>
           </div>
         </div>
+
+        {/* New Smart Features */}
+        {(comparisonSummary.student_recommendation || comparisonSummary.citation_strategy) && (
+          <div className="mt-6 pt-4 border-t border-blue-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {comparisonSummary.student_recommendation && (
+                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                  <h4 className="font-medium text-green-900 mb-1 flex items-center">
+                    <span className="mr-1">🎓</span>
+                    Student Recommendation
+                  </h4>
+                  <p className="text-sm text-green-800">{comparisonSummary.student_recommendation}</p>
+                </div>
+              )}
+              {comparisonSummary.citation_strategy && (
+                <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <h4 className="font-medium text-purple-900 mb-1 flex items-center">
+                    <span className="mr-1">📚</span>
+                    Citation Strategy
+                  </h4>
+                  <p className="text-sm text-purple-800">{comparisonSummary.citation_strategy}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -240,7 +324,11 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
                </button>
                
                {showExportDropdown && (
-                 <div className="absolute right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-44 z-20">
+                 <div className="absolute right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-52 z-20">
+                   {/* Full Document Exports */}
+                   <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                     Full Document
+                   </div>
                    <button
                      onClick={() => {
                        exportToPDF();
@@ -270,6 +358,41 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
                    >
                      <span className="mr-2">💾</span>
                      JSON Data
+                   </button>
+                   
+                   {/* Granular Exports */}
+                   <div className="px-3 py-2 text-xs font-medium text-gray-500 border-t border-gray-100 mt-1">
+                     Copy Sections
+                   </div>
+                   <button
+                     onClick={() => {
+                       copyExecutiveSummary();
+                       setShowExportDropdown(false);
+                     }}
+                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
+                   >
+                     <span className="mr-2">📋</span>
+                     Executive Summary
+                   </button>
+                   <button
+                     onClick={() => {
+                       copyComparisonTable();
+                       setShowExportDropdown(false);
+                     }}
+                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
+                   >
+                     <span className="mr-2">📊</span>
+                     Comparison Table
+                   </button>
+                   <button
+                     onClick={() => {
+                       copySummaryCard();
+                       setShowExportDropdown(false);
+                     }}
+                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
+                   >
+                     <span className="mr-2">💡</span>
+                     Summary Card
                    </button>
                  </div>
                )}
@@ -377,37 +500,90 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
         )}
       </div>
 
-      {/* Follow-up Actions */}
-      <div className="mt-8 bg-gray-50 rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Follow-up Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Smart Student Tools */}
+      <div className="mt-8 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl p-6 border border-green-200">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <span className="mr-2">🎓</span>
+          Smart Student Tools
+        </h3>
+        
+        {/* Interactive Enhancement Buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <button
-            onClick={() => onFollowUp && onFollowUp("What are the practical implications of these differences?")}
-            className="p-4 text-left bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+            onClick={() => {
+              const contextPrompt = mainReport.metadata?.context 
+                ? `Based on the context "${mainReport.metadata.context}", generate a sample essay introduction paragraph that incorporates both articles from this comparison.`
+                : "Generate a sample essay introduction paragraph that incorporates both articles from this comparison.";
+              onFollowUp && onFollowUp(contextPrompt);
+            }}
+            className="p-4 bg-white rounded-lg border-2 border-green-300 hover:border-green-400 hover:bg-green-50 transition-colors text-left"
+          >
+            <div className="font-medium text-gray-900 flex items-center">
+              <span className="mr-2">💡</span>
+              Essay Help
+            </div>
+            <div className="text-sm text-gray-600 mt-1">Generate sample intro + comparison paragraph</div>
+          </button>
+
+          <button
+            onClick={() => {
+              const contextPrompt = mainReport.metadata?.context 
+                ? `Based on the context "${mainReport.metadata.context}" and this article comparison, generate 3 smart research questions that could guide further investigation.`
+                : "Based on this article comparison, generate 3 smart research questions that could guide further investigation.";
+              onFollowUp && onFollowUp(contextPrompt);
+            }}
+            className="p-4 bg-white rounded-lg border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+          >
+            <div className="font-medium text-gray-900 flex items-center">
+              <span className="mr-2">🎯</span>
+              Research Questions
+            </div>
+            <div className="text-sm text-gray-600 mt-1">3 smart, citation-backed questions to explore</div>
+          </button>
+
+          <button
+            onClick={() => {
+              const contextPrompt = mainReport.metadata?.context 
+                ? `Highlight and explain the matching concepts between both articles that are relevant to "${mainReport.metadata.context}".`
+                : "Highlight and explain the matching concepts and themes that appear in both articles.";
+              onFollowUp && onFollowUp(contextPrompt);
+            }}
+            className="p-4 bg-white rounded-lg border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-colors text-left"
+          >
+            <div className="font-medium text-gray-900 flex items-center">
+              <span className="mr-2">📌</span>
+              Matching Concepts
+            </div>
+            <div className="text-sm text-gray-600 mt-1">Auto-highlight shared topics and themes</div>
+          </button>
+        </div>
+
+        {/* Standard Follow-up Actions */}
+        <h4 className="font-medium text-gray-900 mb-3">Additional Analysis</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <button
+            onClick={() => {
+              const contextPrompt = mainReport.metadata?.context 
+                ? `What are the practical implications of these article differences for "${mainReport.metadata.context}"?`
+                : "What are the practical implications of these differences?";
+              onFollowUp && onFollowUp(contextPrompt);
+            }}
+            className="p-3 text-left bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
           >
             <div className="font-medium text-gray-900">Practical Implications</div>
-            <div className="text-sm text-gray-600 mt-1">Explore real-world applications of the differences</div>
+            <div className="text-xs text-gray-600 mt-1">Explore real-world applications</div>
           </button>
           <button
-            onClick={() => onFollowUp && onFollowUp("How do these articles complement each other?")}
-            className="p-4 text-left bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+            onClick={() => {
+              const contextPrompt = mainReport.metadata?.context 
+                ? `How should I cite both articles effectively for "${mainReport.metadata.context}"?`
+                : "How should I cite both articles effectively in my work?";
+              onFollowUp && onFollowUp(contextPrompt);
+            }}
+            className="p-3 text-left bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
           >
-            <div className="font-medium text-gray-900">Complementary Analysis</div>
-            <div className="text-sm text-gray-600 mt-1">Understand how articles work together</div>
-          </button>
-          <button
-            onClick={() => onFollowUp && onFollowUp("What additional research is needed based on this comparison?")}
-            className="p-4 text-left bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
-          >
-            <div className="font-medium text-gray-900">Research Gaps</div>
-            <div className="text-sm text-gray-600 mt-1">Identify areas needing further investigation</div>
-          </button>
-          <button
-            onClick={() => onFollowUp && onFollowUp("How reliable are the methodologies used in both articles?")}
-            className="p-4 text-left bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
-          >
-            <div className="font-medium text-gray-900">Methodology Assessment</div>
-            <div className="text-sm text-gray-600 mt-1">Evaluate research approach reliability</div>
+            <div className="font-medium text-gray-900">Citation Strategy</div>
+            <div className="text-xs text-gray-600 mt-1">Best practices for referencing both</div>
           </button>
         </div>
       </div>
