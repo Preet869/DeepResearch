@@ -49,6 +49,9 @@ class ConversationMove(BaseModel):
     conversation_id: int
     folder_id: Optional[int] = None
 
+class FolderReorder(BaseModel):
+    folder_ids: List[int]
+
 class ArticleComparisonRequest(BaseModel):
     article1_url: Optional[str] = None
     article1_text: Optional[str] = None
@@ -518,7 +521,8 @@ async def get_folders(authorization: str = Header(...)):
         if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Get folders with conversation counts
+        # Get folders with conversation counts, ordered by created_at for now
+        # TODO: Add sort_order column to database schema and update this query
         folders_query = supabase.table("folders").select("*").eq("user_id", user.id).order("created_at", desc=False)
         folders_response = folders_query.execute()
         
@@ -608,6 +612,38 @@ async def delete_folder(folder_id: int, authorization: str = Header(...)):
         return {"message": "Folder deleted successfully"}
     except Exception as e:
         print(f"Error in delete_folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/folders/reorder")
+async def reorder_folders(reorder_data: FolderReorder, authorization: str = Header(...)):
+    """Reorders folders by updating their created_at timestamp to maintain order."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Verify all folders belong to the user
+        for folder_id in reorder_data.folder_ids:
+            folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+            if not folder_check.data:
+                raise HTTPException(status_code=404, detail=f"Folder {folder_id} not found or access denied")
+        
+        # Update each folder's created_at to maintain the desired order
+        # We'll set timestamps with minute intervals to preserve order
+        from datetime import datetime, timedelta
+        base_time = datetime.now()
+        
+        for index, folder_id in enumerate(reorder_data.folder_ids):
+            # Set created_at with incremental timestamps to maintain order
+            new_timestamp = base_time + timedelta(minutes=index)
+            supabase.table("folders").update({
+                "created_at": new_timestamp.isoformat()
+            }).eq("id", folder_id).execute()
+        
+        return {"message": "Folders reordered successfully"}
+    except Exception as e:
+        print(f"Error in reorder_folders: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/conversations/move")
