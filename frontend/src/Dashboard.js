@@ -45,44 +45,63 @@ const DraggableResearchCard = ({ conversation, onOpen }) => {
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
-      onClick={() => onOpen(conversation)}
-      className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer group ${
-        isDragging ? 'opacity-50 cursor-grabbing' : ''
+      className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow group ${
+        isDragging ? 'opacity-50' : ''
       }`}
     >
-            <div className="flex items-start justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2 flex-1 pr-2">
-          {conversation.title}
-        </h3>
+      <div className="flex items-start justify-between mb-4">
+        <div 
+          className="flex-1 pr-2 cursor-pointer"
+          onClick={() => onOpen(conversation)}
+        >
+          <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">
+            {conversation.title}
+          </h3>
+        </div>
         <div className="flex items-center space-x-2 flex-shrink-0">
-          <div className="relative group/drag">
-            <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group/drag:hover:text-blue-700 transition-colors cursor-grab" fill="currentColor" viewBox="0 0 24 24" title="Drag to move to folder">
-              <circle cx="9" cy="7" r="1.5"/>
-              <circle cx="9" cy="12" r="1.5"/>
-              <circle cx="9" cy="17" r="1.5"/>
-              <circle cx="15" cy="7" r="1.5"/>
-              <circle cx="15" cy="12" r="1.5"/>
-              <circle cx="15" cy="17" r="1.5"/>
-            </svg>
+          <div 
+            className="relative group/drag"
+            {...listeners}
+          >
+            <div className="p-1 hover:bg-gray-100 rounded cursor-grab" title="Drag to move to folder">
+              <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group/drag:hover:text-blue-700 transition-colors" fill="currentColor" viewBox="0 0 24 24">
+                <circle cx="9" cy="7" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/>
+                <circle cx="9" cy="17" r="1.5"/>
+                <circle cx="15" cy="7" r="1.5"/>
+                <circle cx="15" cy="12" r="1.5"/>
+                <circle cx="15" cy="17" r="1.5"/>
+              </svg>
+            </div>
             <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group/drag:hover:opacity-100 transition-opacity whitespace-nowrap z-10">
               Drag to folder
             </div>
           </div>
-          <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
+          <div 
+            className="cursor-pointer"
+            onClick={() => onOpen(conversation)}
+          >
+            <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
         </div>
       </div>
       
-      <div className="flex items-center text-sm text-gray-500 mb-4">
+      <div 
+        className="flex items-center text-sm text-gray-500 mb-4 cursor-pointer"
+        onClick={() => onOpen(conversation)}
+      >
         <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v16a2 2 0 002 2z" />
         </svg>
         {new Date(conversation.created_at).toLocaleDateString()}
       </div>
 
-      <div className="h-20 bg-gray-50 rounded-lg flex items-center justify-center">
+      <div 
+        className="h-20 bg-gray-50 rounded-lg flex items-center justify-center cursor-pointer"
+        onClick={() => onOpen(conversation)}
+      >
         <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2-2V7a2 2 0 012-2h2a2 2 0 002 2v2a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 00-2 2h-2a2 2 0 00-2 2v6a2 2 0 01-2 2H9z" />
         </svg>
@@ -176,11 +195,14 @@ const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, is
     <div
       ref={setNodeRef}
       style={style}
-      className={`${baseClasses} ${overClasses} cursor-pointer group/folder`}
+      className={`${baseClasses} ${overClasses} group/folder`}
       {...attributes}
     >
-      <div className="flex items-center justify-between" onClick={() => onSelect(folder)}>
-        <div className="flex items-center flex-1">
+      <div className="flex items-center justify-between">
+        <div 
+          className="flex items-center flex-1 cursor-pointer"
+          onClick={() => onSelect(folder)}
+        >
           <div
             className="w-4 h-4 rounded mr-3"
             style={{ backgroundColor: folder.color }}
@@ -210,11 +232,14 @@ const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, is
           </svg>
         </div>
       </div>
-      <p className={`text-sm ml-7 ${
-        isOverForDrop && !isDraggingFolder ? 'text-green-600' : 
-        isOverForReorder && isDraggingFolder ? 'text-blue-600' : 
-        'text-gray-500'
-      }`}>
+      <p 
+        className={`text-sm ml-7 cursor-pointer ${
+          isOverForDrop && !isDraggingFolder ? 'text-green-600' : 
+          isOverForReorder && isDraggingFolder ? 'text-blue-600' : 
+          'text-gray-500'
+        }`}
+        onClick={() => onSelect(folder)}
+      >
         {statusMessage}
       </p>
     </div>
