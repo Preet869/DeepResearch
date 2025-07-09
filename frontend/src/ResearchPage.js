@@ -17,6 +17,7 @@ const ResearchPage = () => {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedFollowUpSlot, setSelectedFollowUpSlot] = useState(null);
   const [customFollowUpQuery, setCustomFollowUpQuery] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const dropdownRef = useRef(null);
 
   const { token } = useAuth();
@@ -140,6 +141,31 @@ const ResearchPage = () => {
 
   const goBackToDashboard = () => {
     navigate('/dashboard');
+  };
+
+  const handleDeleteResearch = async () => {
+    if (!conversationId) return;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/conversations/${conversationId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Show success message briefly before navigating
+        alert(data.message);
+        navigate('/dashboard');
+      } else {
+        throw new Error('Failed to delete research');
+      }
+    } catch (error) {
+      console.error('Error deleting research:', error);
+      alert('Failed to delete research. Please try again.');
+    } finally {
+      setShowDeleteModal(false);
+    }
   };
 
   // Timeline handlers
@@ -538,6 +564,21 @@ const ResearchPage = () => {
                       <span className="text-sm font-medium">Collaboration</span>
                     </div>
                   </button>
+                  
+                  {/* Delete Research Button - Only show if conversation exists */}
+                  {conversationId && (
+                    <button 
+                      onClick={() => setShowDeleteModal(true)}
+                      className="w-full p-3 text-left rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 mr-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span className="text-sm font-medium text-red-700">Delete Research</span>
+                      </div>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -687,6 +728,37 @@ const ResearchPage = () => {
                     Start Research
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+              <div className="flex items-center mb-4">
+                <svg className="w-6 h-6 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <h3 className="text-lg font-semibold text-gray-900">Delete Research</h3>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete this research? This action cannot be undone and will remove all associated data including follow-up questions and reports.
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteResearch}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Delete Research
+                </button>
               </div>
             </div>
           </div>
