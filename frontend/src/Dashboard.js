@@ -57,10 +57,9 @@ const DraggableResearchCard = ({ conversation, onOpen, onDelete }) => {
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
       onClick={handleCardClick}
       className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer group ${
-        isDragging ? 'opacity-50 cursor-grabbing' : ''
+        isDragging ? 'opacity-50' : ''
       }`}
     >
             <div className="flex items-start justify-between mb-4">
@@ -77,8 +76,12 @@ const DraggableResearchCard = ({ conversation, onOpen, onDelete }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
-          <div className="relative group/drag">
-            <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group/drag:hover:text-blue-700 transition-colors cursor-grab" fill="currentColor" viewBox="0 0 24 24" title="Drag to move to folder">
+          <div 
+            className="relative group/drag"
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg className={`w-5 h-5 text-gray-400 group-hover:text-blue-600 group/drag:hover:text-blue-700 transition-colors ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`} fill="currentColor" viewBox="0 0 24 24" title="Drag to move to folder">
               <circle cx="9" cy="7" r="1.5"/>
               <circle cx="9" cy="12" r="1.5"/>
               <circle cx="9" cy="17" r="1.5"/>
