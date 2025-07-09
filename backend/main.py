@@ -52,6 +52,9 @@ class ConversationMove(BaseModel):
 class FolderReorder(BaseModel):
     folder_ids: List[int]
 
+class FolderDeleteRequest(BaseModel):
+    delete_conversations: bool = False  # If True, delete all conversations; if False, move to uncategorized
+
 class ArticleComparisonRequest(BaseModel):
     article1_url: Optional[str] = None
     article1_text: Optional[str] = None
@@ -591,25 +594,43 @@ async def update_folder(folder_id: int, folder: FolderUpdate, authorization: str
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/folders/{folder_id}")
-async def delete_folder(folder_id: int, authorization: str = Header(...)):
-    """Deletes a folder and moves all conversations to uncategorized."""
+async def delete_folder(folder_id: int, delete_conversations: bool = False, authorization: str = Header(...)):
+    """Deletes a folder and either moves conversations to uncategorized or deletes them."""
     try:
         access_token = authorization.split(" ")[1]
         user = await get_user_from_token(access_token)
         if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Check if folder belongs to user
-        folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+        # Check if folder belongs to user and get folder info
+        folder_check = supabase.table("folders").select("id, name").eq("id", folder_id).eq("user_id", user.id).execute()
         if not folder_check.data:
             raise HTTPException(status_code=404, detail="Folder not found or access denied")
         
-        # Move all conversations in this folder to uncategorized (folder_id = null)
-        supabase.table("conversations").update({"folder_id": None}).eq("folder_id", folder_id).eq("user_id", user.id).execute()
+        folder_name = folder_check.data[0]['name']
+        
+        # Get all conversations in this folder
+        conversations_res = supabase.table("conversations").select("id").eq("folder_id", folder_id).eq("user_id", user.id).execute()
+        conversation_ids = [conv['id'] for conv in conversations_res.data]
+        
+        if delete_conversations:
+            # Delete all conversations and their messages
+            for conv_id in conversation_ids:
+                # Delete messages first
+                supabase.table("messages").delete().eq("conversation_id", conv_id).execute()
+                # Delete conversation
+                supabase.table("conversations").delete().eq("id", conv_id).execute()
+            
+            message = f"Folder '{folder_name}' and all {len(conversation_ids)} research items deleted successfully"
+        else:
+            # Move all conversations in this folder to uncategorized (folder_id = null)
+            supabase.table("conversations").update({"folder_id": None}).eq("folder_id", folder_id).eq("user_id", user.id).execute()
+            
+            message = f"Folder '{folder_name}' deleted successfully. {len(conversation_ids)} research items moved to uncategorized."
         
         # Delete the folder
         response = supabase.table("folders").delete().eq("id", folder_id).execute()
-        return {"message": "Folder deleted successfully"}
+        return {"message": message}
     except Exception as e:
         print(f"Error in delete_folder: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -712,6 +733,33 @@ async def get_messages(conversation_id: int, authorization: str = Header(...)):
         return messages_res.data
     except Exception as e: 
         print(f"Error in get_messages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: int, authorization: str = Header(...)):
+    """Deletes a conversation and all its associated messages."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Check if conversation belongs to user
+        convo_check = supabase.table("conversations").select("id, title").eq("id", conversation_id).eq("user_id", user.id).execute()
+        if not convo_check.data:
+            raise HTTPException(status_code=404, detail="Conversation not found or access denied")
+        
+        conversation_title = convo_check.data[0]['title']
+        
+        # Delete all messages in this conversation first
+        supabase.table("messages").delete().eq("conversation_id", conversation_id).execute()
+        
+        # Delete the conversation itself
+        response = supabase.table("conversations").delete().eq("id", conversation_id).execute()
+        
+        return {"message": f"Research '{conversation_title}' deleted successfully"}
+    except Exception as e:
+        print(f"Error in delete_conversation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/research")

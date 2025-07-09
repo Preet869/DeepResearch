@@ -24,7 +24,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
 // Draggable Research Card Component
-const DraggableResearchCard = ({ conversation, onOpen }) => {
+const DraggableResearchCard = ({ conversation, onOpen, onDelete }) => {
   const {
     attributes,
     listeners,
@@ -40,13 +40,25 @@ const DraggableResearchCard = ({ conversation, onOpen }) => {
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const handleCardClick = (e) => {
+    // Only open if not clicking on action buttons
+    if (!e.target.closest('.action-button')) {
+      onOpen(conversation);
+    }
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    onDelete(conversation);
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
-      onClick={() => onOpen(conversation)}
+      onClick={handleCardClick}
       className={`bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer group ${
         isDragging ? 'opacity-50 cursor-grabbing' : ''
       }`}
@@ -56,6 +68,15 @@ const DraggableResearchCard = ({ conversation, onOpen }) => {
           {conversation.title}
         </h3>
         <div className="flex items-center space-x-2 flex-shrink-0">
+          <button
+            onClick={handleDelete}
+            className="action-button p-1 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+            title="Delete research"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
           <div className="relative group/drag">
             <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group/drag:hover:text-blue-700 transition-colors cursor-grab" fill="currentColor" viewBox="0 0 24 24" title="Drag to move to folder">
               <circle cx="9" cy="7" r="1.5"/>
@@ -130,7 +151,7 @@ const DroppableFolderButton = ({ folder, isSelected, onSelect, isOver, id, isDra
 };
 
 // Draggable & Droppable Folder Component
-const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, isOverForReorder, isDragging, isDraggingFolder }) => {
+const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, isOverForReorder, isDragging, isDraggingFolder, onDelete }) => {
   const {
     attributes,
     listeners,
@@ -194,20 +215,34 @@ const DraggableFolderButton = ({ folder, isSelected, onSelect, isOverForDrop, is
             </svg>
           )}
         </div>
-        <div
-          {...listeners}
-          className="p-1 opacity-0 group-hover/folder:opacity-100 transition-opacity cursor-grab hover:bg-gray-200 rounded"
-          onClick={(e) => e.stopPropagation()}
-          title="Drag to reorder"
-        >
-          <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-            <circle cx="9" cy="7" r="1"/>
-            <circle cx="9" cy="12" r="1"/>
-            <circle cx="9" cy="17" r="1"/>
-            <circle cx="15" cy="7" r="1"/>
-            <circle cx="15" cy="12" r="1"/>
-            <circle cx="15" cy="17" r="1"/>
-          </svg>
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(folder);
+            }}
+            className="action-button p-1 opacity-0 group-hover/folder:opacity-100 transition-opacity text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+            title="Delete folder"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+          <div
+            {...listeners}
+            className="p-1 opacity-0 group-hover/folder:opacity-100 transition-opacity cursor-grab hover:bg-gray-200 rounded"
+            onClick={(e) => e.stopPropagation()}
+            title="Drag to reorder"
+          >
+            <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+              <circle cx="9" cy="7" r="1"/>
+              <circle cx="9" cy="12" r="1"/>
+              <circle cx="9" cy="17" r="1"/>
+              <circle cx="15" cy="7" r="1"/>
+              <circle cx="15" cy="12" r="1"/>
+              <circle cx="15" cy="17" r="1"/>
+            </svg>
+          </div>
         </div>
       </div>
       <p className={`text-sm ml-7 ${
@@ -236,6 +271,9 @@ const Dashboard = () => {
   const [overId, setOverId] = useState(null);
   const [notification, setNotification] = useState(null);
   const [isDraggingFolder, setIsDraggingFolder] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState(null); // 'conversation' or 'folder'
 
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -405,6 +443,73 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error reordering folders:', error);
       return false;
+    }
+  };
+
+  const handleDeleteConversation = (conversation) => {
+    setItemToDelete(conversation);
+    setDeleteType('conversation');
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteFolder = (folder) => {
+    setItemToDelete(folder);
+    setDeleteType('folder');
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async (deleteAllResearch = false) => {
+    if (!itemToDelete) return;
+
+    try {
+      if (deleteType === 'conversation') {
+        const response = await fetch(`http://127.0.0.1:8000/conversations/${itemToDelete.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setNotification({
+            type: 'success',
+            message: data.message
+          });
+          await fetchData();
+        } else {
+          throw new Error('Failed to delete research');
+        }
+      } else if (deleteType === 'folder') {
+        const response = await fetch(`http://127.0.0.1:8000/folders/${itemToDelete.id}?delete_conversations=${deleteAllResearch}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setNotification({
+            type: 'success',
+            message: data.message
+          });
+          await fetchData();
+          // If we deleted the currently selected folder, reset to "All Research"
+          if (selectedFolder && selectedFolder.id === itemToDelete.id) {
+            setSelectedFolder(null);
+          }
+        } else {
+          throw new Error('Failed to delete folder');
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+      setNotification({
+        type: 'error',
+        message: 'Failed to delete. Please try again.'
+      });
+    } finally {
+      setShowDeleteModal(false);
+      setItemToDelete(null);
+      setDeleteType(null);
+      setTimeout(() => setNotification(null), 5000);
     }
   };
 
@@ -649,6 +754,7 @@ const Dashboard = () => {
                       isOverForReorder={overId === `folder-${folder.id}`}
                       isDragging={activeId === `folder-${folder.id}`}
                       isDraggingFolder={isDraggingFolder}
+                      onDelete={handleDeleteFolder}
                     />
                   ))}
                 </SortableContext>
@@ -718,6 +824,7 @@ const Dashboard = () => {
                     key={conversation.id}
                     conversation={conversation}
                     onOpen={openConversation}
+                    onDelete={handleDeleteConversation}
                   />
                 ))}
               </div>
@@ -789,6 +896,99 @@ const Dashboard = () => {
                 Create
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && itemToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+            {deleteType === 'conversation' ? (
+              <>
+                <div className="flex items-center mb-4">
+                  <svg className="w-6 h-6 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <h3 className="text-lg font-semibold text-gray-900">Delete Research</h3>
+                </div>
+                <p className="text-gray-600 mb-6">
+                  Are you sure you want to delete <strong>"{itemToDelete.title}"</strong>? This action cannot be undone.
+                </p>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => confirmDelete()}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Delete Research
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center mb-4">
+                  <svg className="w-6 h-6 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <h3 className="text-lg font-semibold text-gray-900">Delete Folder</h3>
+                </div>
+                <p className="text-gray-600 mb-4">
+                  What would you like to do with the <strong>{itemToDelete.conversation_count} research items</strong> in the <strong>"{itemToDelete.name}"</strong> folder?
+                </p>
+                <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                  <div className="space-y-3">
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="deleteOption"
+                        value="move"
+                        defaultChecked
+                        className="mt-1 mr-3"
+                      />
+                      <div>
+                        <div className="font-medium text-gray-900">Move to "All Research"</div>
+                        <div className="text-sm text-gray-600">Keep all research items but move them out of this folder</div>
+                      </div>
+                    </label>
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="deleteOption"
+                        value="delete"
+                        className="mt-1 mr-3"
+                      />
+                      <div>
+                        <div className="font-medium text-gray-900 text-red-700">Delete everything</div>
+                        <div className="text-sm text-red-600">Permanently delete the folder and all research items inside</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      const deleteAll = document.querySelector('input[name="deleteOption"]:checked').value === 'delete';
+                      confirmDelete(deleteAll);
+                    }}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Delete Folder
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
