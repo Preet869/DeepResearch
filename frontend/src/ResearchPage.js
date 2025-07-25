@@ -180,7 +180,8 @@ const ResearchPage = () => {
   };
 
   const handleFollowUpSlotClick = (slot) => {
-    if (messages.length > slot) {
+    const userMessages = messages.filter(m => m.role === 'user');
+    if (userMessages.length > slot) {
       // If slot has content, navigate to it
       handleNodeSelect(slot);
     } else {
@@ -405,10 +406,10 @@ const ResearchPage = () => {
                 <div className="space-y-3">
                   {/* Original Research */}
                   <button
-                    onClick={() => messages.length > 0 ? handleNodeSelect(0) : null}
-                    disabled={messages.length === 0}
+                    onClick={() => messages.filter(m => m.role === 'user').length > 0 ? handleNodeSelect(0) : null}
+                    disabled={messages.filter(m => m.role === 'user').length === 0}
                     className={`w-full flex items-center p-3 rounded-lg border transition-colors ${
-                      messages.length > 0
+                      messages.filter(m => m.role === 'user').length > 0
                         ? activeNodeIndex === 0
                           ? 'bg-blue-100 border-blue-300 hover:bg-blue-200'
                           : 'bg-blue-50 border-blue-200 hover:bg-blue-100 cursor-pointer'
@@ -416,7 +417,7 @@ const ResearchPage = () => {
                     }`}
                   >
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium mr-3 ${
-                      messages.length > 0
+                      messages.filter(m => m.role === 'user').length > 0
                         ? activeNodeIndex === 0
                           ? 'bg-blue-700 text-white'
                           : 'bg-blue-600 text-white'
@@ -426,12 +427,17 @@ const ResearchPage = () => {
                     </div>
                     <div className="flex-1 min-w-0 text-left">
                       <div className="text-sm font-medium text-gray-900 truncate">
-                        {messages.length > 0 && messages[0]?.query 
-                          ? messages[0].query 
-                          : 'Original Research'}
+                        {(() => {
+                          const userMessages = messages.filter(m => m.role === 'user');
+                          const firstUserMessage = userMessages[0];
+                          if (firstUserMessage) {
+                            return firstUserMessage.content;
+                          }
+                          return 'Original Research';
+                        })()}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {messages.length > 0 
+                        {messages.filter(m => m.role === 'user').length > 0 
                           ? activeNodeIndex === 0 ? 'Currently Viewing' : 'Click to View'
                           : 'Ready to start'}
                       </div>
@@ -450,33 +456,38 @@ const ResearchPage = () => {
                     <button
                       key={slot}
                       onClick={() => handleFollowUpSlotClick(slot)}
-                      className={`w-full flex items-center p-3 rounded-lg border transition-colors ${
-                        messages.length > slot 
-                          ? activeNodeIndex === slot
-                            ? 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                            : 'bg-green-50 border-green-200 hover:bg-green-100 cursor-pointer'
-                          : 'bg-purple-50 border-purple-200 hover:bg-purple-100 cursor-pointer'
-                      }`}
+                                          className={`w-full flex items-center p-3 rounded-lg border transition-colors ${
+                      messages.filter(m => m.role === 'user').length > slot 
+                        ? activeNodeIndex === slot
+                          ? 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                          : 'bg-green-50 border-green-200 hover:bg-green-100 cursor-pointer'
+                        : 'bg-purple-50 border-purple-200 hover:bg-purple-100 cursor-pointer'
+                    }`}
                     >
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium mr-3 ${
-                        messages.length > slot 
+                        messages.filter(m => m.role === 'user').length > slot 
                           ? activeNodeIndex === slot
                             ? 'bg-blue-600 text-white'
                             : 'bg-green-600 text-white'
                           : 'bg-gray-300 text-gray-600'
                       }`}>
-                        {messages.length > slot ? '✓' : `${slot + 1}`}
+                        {messages.filter(m => m.role === 'user').length > slot ? '✓' : `${slot + 1}`}
                       </div>
                       <div className="flex-1 min-w-0 text-left">
                         <div className="text-sm font-medium text-gray-900 truncate">
-                          {messages.length > slot && messages[slot]?.query
-                            ? messages[slot].query
-                            : messages.length > slot 
+                          {(() => {
+                            const userMessages = messages.filter(m => m.role === 'user');
+                            const userMessage = userMessages[slot];
+                            if (userMessage) {
+                              return userMessage.content;
+                            }
+                            return userMessages.length > slot 
                               ? `Follow-up ${slot}`
-                              : `Follow-up ${slot} Slot`}
+                              : `Follow-up ${slot} Slot`;
+                          })()}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {messages.length > slot 
+                          {messages.filter(m => m.role === 'user').length > slot 
                             ? activeNodeIndex === slot ? 'Currently Viewing' : 'Click to View'
                             : 'Click to Add Follow-up'}
                         </div>

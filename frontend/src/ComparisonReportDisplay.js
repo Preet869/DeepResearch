@@ -7,6 +7,7 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
   const [activeTab, setActiveTab] = useState('comparison'); // comparison, article1, article2
   const [copiedSection, setCopiedSection] = useState(null);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showContext, setShowContext] = useState(false);
 
   if (!messages || messages.length === 0) {
     return null;
@@ -193,11 +194,25 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
         {/* Context Display */}
         {mainReport.metadata?.context && (
           <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center mb-1">
-              <span className="mr-2">🎯</span>
-              <span className="font-medium text-gray-900">Context</span>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center">
+                <span className="mr-2">🎯</span>
+                <span className="font-medium text-gray-900">Context</span>
+              </div>
+              <button
+                onClick={() => setShowContext(!showContext)}
+                className="flex items-center text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                title={showContext ? "Hide context" : "Show context"}
+              >
+                <svg className={`w-3 h-3 mr-1 transition-transform ${showContext ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                {showContext ? 'Hide' : 'Show'}
+              </button>
             </div>
-            <p className="text-sm text-gray-700">{mainReport.metadata.context}</p>
+            {showContext && (
+              <p className="text-sm text-gray-700">{mainReport.metadata.context}</p>
+            )}
           </div>
         )}
         
