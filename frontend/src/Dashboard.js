@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
@@ -12,7 +12,6 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -309,24 +308,7 @@ const Dashboard = () => {
     '#8B5CF6', '#06B6D4', '#84CC16', '#F97316'
   ];
 
-  useEffect(() => {
-    if (token) {
-      fetchData();
-    }
-  }, [token]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      await Promise.all([fetchFolders(), fetchConversations()]);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchFolders = async () => {
+  const fetchFolders = useCallback(async () => {
     try {
       const response = await fetch('http://127.0.0.1:8000/folders', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -339,9 +321,9 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching folders:', error);
     }
-  };
+  }, [token]);
 
-  const fetchConversations = async (folderId = null) => {
+  const fetchConversations = useCallback(async (folderId = null) => {
     try {
       const url = folderId 
         ? `http://127.0.0.1:8000/conversations?folder_id=${folderId}`
@@ -374,7 +356,24 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching conversations:', error);
     }
-  };
+  }, [token]);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      await Promise.all([fetchFolders(), fetchConversations()]);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchFolders, fetchConversations]);
+
+  useEffect(() => {
+    if (token) {
+      fetchData();
+    }
+  }, [token, fetchData]);
 
   const createFolder = async () => {
     if (!newFolderName.trim()) return;

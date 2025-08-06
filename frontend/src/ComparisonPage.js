@@ -89,31 +89,10 @@ const ComparisonPage = () => {
     navigate('/dashboard');
   };
 
-  const comparisonFocusOptions = [
-    { value: 'overall', label: 'Overall Comparison', description: 'Comprehensive analysis of all aspects' },
+  const focusOptions = [
+    { value: 'overall', label: 'Overall Comparison', description: 'Comprehensive analysis of both articles' },
     { value: 'methodology', label: 'Methodology Focus', description: 'Compare research methods and approaches' },
     { value: 'findings', label: 'Findings Focus', description: 'Compare key findings and conclusions' }
-  ];
-
-  const exampleComparisons = [
-    {
-      title: "Climate Change Studies",
-      article1: "https://example.com/climate-study-1",
-      article2: "https://example.com/climate-study-2",
-      focus: "methodology"
-    },
-    {
-      title: "AI Healthcare Applications",
-      article1: "https://example.com/ai-healthcare-1",
-      article2: "https://example.com/ai-healthcare-2",
-      focus: "findings"
-    },
-    {
-      title: "Remote Work Productivity",
-      article1: "https://example.com/remote-work-1",
-      article2: "https://example.com/remote-work-2",
-      focus: "overall"
-    }
   ];
 
   return (
@@ -301,7 +280,7 @@ const ComparisonPage = () => {
                     Comparison Focus
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {comparisonFocusOptions.map((option) => (
+                    {focusOptions.map((option) => (
                       <button
                         key={option.value}
                         type="button"

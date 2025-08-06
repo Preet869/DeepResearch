@@ -1,20 +1,15 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
 const Header = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const handleLogout = async () => {
     await signOut();
     navigate('/login');
-  };
-
-  const isActive = (path) => {
-    return location.pathname === path;
   };
 
   return (
@@ -38,21 +33,21 @@ const Header = () => {
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center space-x-3 text-gray-700 hover:text-gray-900 focus:outline-none"
               >
-                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
-                <span className="hidden md:block text-sm font-medium">{user.email}</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="hidden md:block text-sm font-medium truncate max-w-[200px]">{user.email}</span>
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
 
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg border border-gray-200 z-50">
                   <div className="py-1">
-                    <div className="px-4 py-2 text-sm text-gray-500 border-b border-gray-100">
+                    <div className="px-4 py-2 text-sm text-gray-500 border-b border-gray-100 truncate">
                       {user.email}
                     </div>
                     <button
