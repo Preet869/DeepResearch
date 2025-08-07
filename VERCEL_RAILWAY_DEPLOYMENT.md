@@ -21,7 +21,7 @@ This guide will walk you through deploying your DeepResearch application using V
 ### 1.2 Connect Repository
 1. Select "Deploy from GitHub repo"
 2. Choose your DeepResearch repository
-3. Set the root directory to `backend`
+3. Set the root directory to `backend/` (with the trailing slash)
 4. Click "Deploy Now"
 
 ### 1.3 Configure Environment Variables

@@ -14,15 +14,37 @@ from tavily import TavilyClient
 load_dotenv()
 
 # --- Initialize Clients ---
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_service_key = os.getenv("SUPABASE_SERVICE_KEY")
+# Initialize clients only if environment variables are available
+openai_client = None
+tavily_client = None
+supabase = None
 
-# Create Supabase client with service key for all operations
-supabase: Client = create_client(supabase_url, supabase_service_key)
+def initialize_clients():
+    global openai_client, tavily_client, supabase
+    
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    tavily_api_key = os.getenv("TAVILY_API_KEY")
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_service_key = os.getenv("SUPABASE_SERVICE_KEY")
+    
+    if openai_api_key:
+        openai_client = AsyncOpenAI(api_key=openai_api_key)
+    
+    if tavily_api_key:
+        tavily_client = TavilyClient(api_key=tavily_api_key)
+    
+    if supabase_url and supabase_service_key:
+        supabase = create_client(supabase_url, supabase_service_key)
+
+# Initialize clients
+initialize_clients()
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize clients on startup."""
+    initialize_clients()
 
 # --- Middleware ---
 # Get allowed origins from environment or default to localhost
@@ -73,12 +95,15 @@ class ArticleComparisonRequest(BaseModel):
 async def get_user_from_token(access_token: str):
     """Validates JWT token and returns user information."""
     try:
-        # Create a temporary client with the user's access token to validate
-        from supabase import create_client
-        temp_client = create_client(supabase_url, supabase_service_key)
+        # Check if supabase is initialized
+        if not supabase:
+            # Try to initialize clients
+            initialize_clients()
+            if not supabase:
+                raise Exception("Supabase client not initialized")
         
         # Try to get user with the access token
-        user_response = temp_client.auth.get_user(access_token)
+        user_response = supabase.auth.get_user(access_token)
         if user_response and user_response.user:
             return user_response.user
         return None
@@ -103,6 +128,13 @@ async def get_user_from_token(access_token: str):
 
 async def generate_title(prompt: str):
     try:
+        # Check if openai_client is initialized
+        if not openai_client:
+            # Try to initialize clients
+            initialize_clients()
+            if not openai_client:
+                return "New Research"
+        
         response = await openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -515,7 +547,12 @@ CRITICAL: Make this analysis student-focused and actionable. If context is provi
 # --- API Endpoints ---
 @app.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "DeepResearch API is running", "status": "healthy"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Railway."""
+    return {"status": "healthy", "timestamp": "2024-01-01T00:00:00Z"}
 
 # --- Folder Endpoints ---
 @app.get("/folders")
