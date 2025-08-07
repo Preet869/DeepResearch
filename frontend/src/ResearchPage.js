@@ -9,6 +9,7 @@ import SourceTracker from './components/SourceTracker';
 import Analytics from './components/Analytics';
 import Schedule from './components/Schedule';
 import ResearchLibrary from './components/ResearchLibrary';
+import { config } from './config';
 
 const ResearchPage = () => {
   const [messages, setMessages] = useState([]);
@@ -37,7 +38,7 @@ const ResearchPage = () => {
 
   const loadConversation = useCallback(async (convoId) => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/messages/${convoId}`, {
+      const response = await fetch(config.endpoints.messages(convoId), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -112,7 +113,7 @@ const ResearchPage = () => {
         folder_id: folderId || undefined
       };
 
-      const response = await fetch('http://127.0.0.1:8000/research', {
+      const response = await fetch(config.endpoints.research, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -158,7 +159,7 @@ const ResearchPage = () => {
     if (!conversationId) return;
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/conversations/${conversationId}`, {
+      const response = await fetch(`${config.endpoints.conversations}/${conversationId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -250,7 +251,7 @@ const ResearchPage = () => {
         folder_id: folderId || undefined
       };
 
-      const response = await fetch('http://127.0.0.1:8000/research', {
+      const response = await fetch(`${config.apiBaseUrl}/research`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

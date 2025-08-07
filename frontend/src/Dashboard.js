@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from './AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from './AuthContext';
+import { config } from './config';
 import Header from './Header';
 import {
   DndContext,
@@ -310,9 +311,10 @@ const Dashboard = () => {
 
   const fetchFolders = useCallback(async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/folders', {
+      const response = await fetch(config.endpoints.folders, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      
       if (response.ok) {
         const data = await response.json();
         setFolders(data);
@@ -326,8 +328,8 @@ const Dashboard = () => {
   const fetchConversations = useCallback(async (folderId = null) => {
     try {
       const url = folderId 
-        ? `http://127.0.0.1:8000/conversations?folder_id=${folderId}`
-        : 'http://127.0.0.1:8000/conversations';
+        ? `${config.endpoints.conversations}?folder_id=${folderId}`
+        : config.endpoints.conversations;
       
       const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -379,7 +381,7 @@ const Dashboard = () => {
     if (!newFolderName.trim()) return;
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/folders', {
+      const response = await fetch(`${config.apiBaseUrl}/folders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -406,7 +408,7 @@ const Dashboard = () => {
     if (!editFolderName.trim() || !editFolderData) return;
     
     try {
-      const response = await fetch(`http://127.0.0.1:8000/folders/${editFolderData.id}`, {
+      const response = await fetch(`${config.apiBaseUrl}/folders/${editFolderData.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -452,7 +454,7 @@ const Dashboard = () => {
 
   const moveConversationToFolder = async (conversationId, folderId) => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/conversations/move', {
+      const response = await fetch(`${config.apiBaseUrl}/conversations/move`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -478,7 +480,7 @@ const Dashboard = () => {
 
   const reorderFolders = async (newOrder) => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/folders/reorder', {
+      const response = await fetch(`${config.apiBaseUrl}/folders/reorder`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -526,7 +528,7 @@ const Dashboard = () => {
 
     try {
       if (deleteType === 'conversation') {
-        const response = await fetch(`http://127.0.0.1:8000/conversations/${itemToDelete.id}`, {
+        const response = await fetch(`${config.apiBaseUrl}/conversations/${itemToDelete.id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -542,7 +544,7 @@ const Dashboard = () => {
           throw new Error('Failed to delete research');
         }
       } else if (deleteType === 'folder') {
-        const response = await fetch(`http://127.0.0.1:8000/folders/${itemToDelete.id}?delete_conversations=${deleteAllResearch}`, {
+        const response = await fetch(`${config.apiBaseUrl}/folders/${itemToDelete.id}?delete_conversations=${deleteAllResearch}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });

@@ -25,9 +25,12 @@ supabase: Client = create_client(supabase_url, supabase_service_key)
 app = FastAPI()
 
 # --- Middleware ---
+# Get allowed origins from environment or default to localhost
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 

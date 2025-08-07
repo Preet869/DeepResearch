@@ -3,4 +3,5 @@ uvicorn[standard]
 openai
 supabase
 tavily-python
-python-dotenv 
+python-dotenv
+gunicorn 
