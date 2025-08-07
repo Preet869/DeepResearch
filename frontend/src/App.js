@@ -5,6 +5,7 @@ import Dashboard from './Dashboard';
 import ResearchPage from './ResearchPage';
 import ComparisonPage from './ComparisonPage';
 import LoginPage from './LoginPage';
+import DebugInfo from './DebugInfo';
 import './App.css';
 
 const ProtectedRoute = ({ children }) => {
@@ -46,6 +47,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        {process.env.NODE_ENV === 'development' && <DebugInfo />}
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route 
