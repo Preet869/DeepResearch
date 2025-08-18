@@ -1,4 +1,4 @@
 # DeepResearch
-🪦 RIP cuz of OpenAI
+🪦 RIP because of OpenAI
 
 
