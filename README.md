@@ -1,4 +1,3 @@
-<<<<<<< tools
 # DeepResearch 🧠
 
 **AI-Powered Academic Research Platform**
