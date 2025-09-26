@@ -396,8 +396,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 *Start your research journey with DeepResearch today!*
 =======
-
-
-
-
->>>>>>> main
