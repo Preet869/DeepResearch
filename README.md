@@ -8,6 +8,7 @@ DeepResearch transforms any research question into a comprehensive academic repo
 
 ## 🎯 What DeepResearch Does
 
+
 ### **1. AI Research Reports**
 - **Input**: Any research question (e.g., "Latest developments in renewable energy")
 - **Process**: 
