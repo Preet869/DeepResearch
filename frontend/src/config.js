@@ -15,6 +15,7 @@ export const config = {
   API_BASE_URL,
   endpoints: {
     research: `${API_BASE_URL}/research`,
+    usage: `${API_BASE_URL}/usage`,
     messages: (conversationId) => `${API_BASE_URL}/messages/${conversationId}`,
     conversations: `${API_BASE_URL}/conversations`,
     folders: `${API_BASE_URL}/folders`,

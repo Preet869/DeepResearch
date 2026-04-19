@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import logging
 import asyncio
 import ipaddress
@@ -9,7 +10,7 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Request, Response
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 from fastapi.middleware.cors import CORSMiddleware
@@ -121,6 +122,11 @@ class ArticleComparisonRequest(BaseModel):
 class CitationMetadataRequest(BaseModel):
     urls: List[str] = Field(..., min_length=1, max_length=20)
 
+
+class ExportTelemetryRequest(BaseModel):
+    format: str
+    report_word_count: int = Field(..., ge=0)
+
 # --- Auth Helper ---
 async def get_user_from_token(access_token: str):
     """Validates JWT token via Supabase and returns user information."""
@@ -203,20 +209,11 @@ async def multi_query_search(question: str) -> List[Dict]:
         f"{question} recent evidence data statistics",
         f"{question} academic research systematic review",
     ]
-    gen_system = """You generate exactly 3 web search queries for a research assistant.
-
-Requirements for the 3 queries:
-1. Core topic — directly captures the main subject and intent of the research question.
-2. Recent evidence and data — emphasizes current statistics, reports, trends, or empirical findings.
-3. Academic and research perspectives — emphasizes peer-reviewed literature, systematic reviews, theory, or scholarly angles.
-
-Never generate generic queries. Always include academic intent signals like peer reviewed, evidence, study, research, or data in at least one sub-query.
-
-Each query must be standalone and suitable for a web search API. Return ONLY a JSON array of 3 strings, in order [core, recent_evidence, academic]. No markdown, no explanation."""
+    gen_system = """Return a JSON array of exactly 3 search queries for the given research question. Query 1: core topic with academic signal. Query 2: recent evidence and data. Query 3: peer-reviewed research angle. Return only valid JSON. No explanation."""
 
     gen_user = f"Research question:\n{question}\n\nReturn JSON array only, e.g. [\"query1\", \"query2\", \"query3\"]"
     try:
-        raw_q = call_claude(gen_system, gen_user, max_tokens=400)
+        raw_q = call_claude(gen_system, gen_user, max_tokens=150)
         clean_q = raw_q.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         parsed = json.loads(clean_q)
         if isinstance(parsed, list):
@@ -288,10 +285,10 @@ async def evaluate_and_refine_sources(research_question: str, sources: List[Dict
         except Exception as e:
             logger.error("Supplemental search (few sources) failed: %s", e)
 
-    titles_urls = "\n".join(
-        f"- {s.get('title', 'Unknown')}: {s.get('url', '')}"
-        for s in current[:15]
-    )
+    sources_preview = [
+        {"index": i, "title": s.get("title", "")[:80], "domain": s.get("url", "").split("/")[2] if s.get("url") else ""}
+        for i, s in enumerate(current[:15])
+    ]
     eval_system = """You evaluate whether a set of web search results adequately covers a research question for writing a grounded research report.
 
 Return ONLY valid JSON with this exact shape:
@@ -303,14 +300,14 @@ No markdown, no preamble."""
 {research_question}
 
 Sources found ({len(current)} total):
-{titles_urls}
+{json.dumps(sources_preview)}
 
 If coverage is thin, missing_angle should name the concrete gap (e.g. "recent quantitative data", "clinical guidelines", "historical context")."""
 
     sufficient = True
     missing_angle = ""
     try:
-        raw_eval = call_claude(eval_system, eval_user, max_tokens=300)
+        raw_eval = call_claude(eval_system, eval_user, max_tokens=80)
         clean_eval = raw_eval.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         ev = json.loads(clean_eval)
         if isinstance(ev, dict):
@@ -364,7 +361,7 @@ async def extract_facts_from_sources(question: str, sources: List[Dict]) -> Dict
         f"    URL: {s.get('url', '')}\n"
         f"    Published: {s.get('published_date', 'n.d.')}\n"
         f"    Domain: {s.get('url', '').split('/')[2] if s.get('url') else 'Unknown'}\n"
-        f"    Content: {s.get('content', '')[:800]}"
+        f"    Content: {s.get('content', '')[:600]}"
         for i, s in enumerate(sources)
     ])
 
@@ -376,6 +373,7 @@ STRICT RULES:
 - Mark has_numbers as true if the fact contains statistics, percentages, or quantities
 - If two sources say different things, extract both as separate facts
 - Do NOT synthesize, interpret, or infer — only extract what is written
+- Be concise. Extract maximum 4 facts per source.
 
 Return ONLY valid JSON. No preamble, no explanation, no markdown."""
 
@@ -393,7 +391,7 @@ Return this JSON structure:
 }}"""
 
     try:
-        raw = call_claude(system, user, max_tokens=1500)
+        raw = call_claude(system, user, max_tokens=1000)
         # Strip any accidental markdown fences
         clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         return json.loads(clean)
@@ -484,6 +482,8 @@ async def generate_chart_from_facts(facts: List[Dict], sources: List[Dict]) -> O
         logger.info("No quantitative facts found — skipping chart generation")
         return None
 
+    number_facts = number_facts[:8]
+
     number_facts_text = "\n".join([
         f"[{f['source_index']}] {f['text']}"
         for f in number_facts
@@ -525,7 +525,7 @@ If these facts contain enough real quantitative data for a meaningful chart, ret
 If insufficient real data exists for a chart, return: null"""
 
     try:
-        raw = call_claude(system, user, max_tokens=800)
+        raw = call_claude(system, user, max_tokens=400)
         clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         if clean.lower() == "null":
             return None
@@ -546,14 +546,14 @@ Return ONLY a JSON array of 5 strings. Nothing else."""
 
     user = f"""Original research question: {question}
 
-Report summary (first 1500 chars):
-{report_summary[:1500]}
+Report summary (first 800 chars):
+{report_summary[:800]}
 
 Return 5 follow-up questions as a JSON array:
 ["question 1", "question 2", "question 3", "question 4", "question 5"]"""
 
     try:
-        raw = call_claude(system, user, max_tokens=300)
+        raw = call_claude(system, user, max_tokens=200)
         clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         questions = json.loads(clean)
         if isinstance(questions, list):
@@ -577,17 +577,17 @@ async def generate_title(prompt: str) -> str:
     """Generates a short title for a research conversation."""
     system = "Generate a short, concise title (4-6 words) for the following research question. Return only the title, nothing else."
     try:
-        return call_claude(system, prompt, max_tokens=20).strip().strip('"')
+        return call_claude(system, prompt, max_tokens=15).strip().strip('"')
     except Exception:
         return "New Research"
 
 
 async def summarize_conversation(history: List[Dict[str, str]]) -> str:
     """Summarizes conversation history for context in follow-up searches."""
-    history_str = "\n".join([f"{msg['role']}: {msg['content'][:300]}" for msg in history])
+    history_str = "\n".join([f"{msg['role']}: {msg['content'][:500]}" for msg in history[-6:]])
     system = "Concisely summarize this conversation in 2-3 sentences. Focus on the key topics and conclusions. Return only the summary."
     try:
-        return call_claude(system, history_str, max_tokens=200)
+        return call_claude(system, history_str, max_tokens=150)
     except Exception as e:
         logger.error("Conversation summarization failed: %s", e)
         return ""
@@ -935,6 +935,54 @@ End with this JSON block:
 
 
 # =============================================================================
+# USAGE HELPERS
+# =============================================================================
+MONTHLY_REPORT_LIMIT = 5
+
+
+def _count_monthly_reports(user_id: str) -> int:
+    """Count assistant messages produced for this user in the current calendar month."""
+    from datetime import date
+    first_of_month = date.today().replace(day=1).isoformat()
+    # Supabase Python client doesn't support cross-table joins, so we fetch
+    # conversation IDs for the user first, then count matching messages.
+    convos_res = (
+        supabase.table("conversations")
+        .select("id")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    convo_ids = [row["id"] for row in (convos_res.data or [])]
+    if not convo_ids:
+        return 0
+    msg_res = (
+        supabase.table("messages")
+        .select("id", count="exact")
+        .eq("role", "assistant")
+        .gte("created_at", first_of_month)
+        .in_("conversation_id", convo_ids)
+        .execute()
+    )
+    return msg_res.count or 0
+
+
+def _insert_usage_event(user_id: Optional[str], event_type: str, metadata: Dict) -> None:
+    """Best-effort insert into usage_events; never raises; does not touch the HTTP response."""
+    if not supabase:
+        return
+    try:
+        supabase.table("usage_events").insert(
+            {
+                "user_id": user_id,
+                "event_type": event_type,
+                "metadata": metadata,
+            }
+        ).execute()
+    except Exception as e:
+        logger.warning("usage_events insert skipped (%s): %s", event_type, e)
+
+
+# =============================================================================
 # API ENDPOINTS
 # =============================================================================
 
@@ -1171,6 +1219,56 @@ async def delete_conversation(conversation_id: int, authorization: str = Header(
 # =============================================================================
 # MAIN RESEARCH ENDPOINT — 4-STEP PIPELINE
 # =============================================================================
+@app.get("/usage")
+async def get_usage(authorization: str = Header(...)):
+    """Returns the user's report usage for the current calendar month."""
+    try:
+        access_token = authorization.split(" ")[1]
+        user = await get_user_from_token(access_token)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        reports_used = _count_monthly_reports(user.id)
+        return {
+            "reports_used": reports_used,
+            "reports_limit": MONTHLY_REPORT_LIMIT,
+            "reports_remaining": max(0, MONTHLY_REPORT_LIMIT - reports_used),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error in get_usage: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve usage")
+
+
+@app.post("/telemetry/export", include_in_schema=False)
+@limiter.limit("120/hour")
+async def telemetry_export(
+    request: Request,
+    body: ExportTelemetryRequest,
+    authorization: str = Header(...),
+):
+    """Write-only: logs export_triggered (no usage_events rows are returned)."""
+    allowed = {"pdf", "docx", "markdown", "json"}
+    fmt = (body.format or "").strip().lower()
+    if fmt not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid format")
+
+    try:
+        access_token = authorization.split(" ")[1]
+    except IndexError:
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    user = await get_user_from_token(access_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    _insert_usage_event(
+        str(user.id),
+        "export_triggered",
+        {"format": fmt, "report_word_count": body.report_word_count},
+    )
+    return Response(status_code=204)
+
+
 @app.post("/research")
 @limiter.limit("20/hour")
 async def run_research(request: Request, body: ResearchRequest, authorization: str = Header(...)):
@@ -1182,11 +1280,31 @@ async def run_research(request: Request, body: ResearchRequest, authorization: s
     4. Chart generation (real numbers only or None)
     + Follow-up question generation
     """
+    start = time.time()
     try:
         access_token = authorization.split(" ")[1]
         user = await get_user_from_token(access_token)
         if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
+
+        uid = str(user.id)
+        reports_used = _count_monthly_reports(user.id)
+        if reports_used >= MONTHLY_REPORT_LIMIT:
+            from datetime import date
+
+            _insert_usage_event(
+                uid,
+                "limit_reached",
+                {"reports_used": MONTHLY_REPORT_LIMIT, "day_of_month": date.today().day},
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "You've reached the 5 report limit for our beta. "
+                    "We're limiting usage while we improve the platform. "
+                    "Check back next month for more free reports."
+                ),
+            )
 
         convo_id = body.conversation_id
         history = []
@@ -1208,10 +1326,22 @@ async def run_research(request: Request, body: ResearchRequest, authorization: s
             if history:
                 conversation_summary = await summarize_conversation(history)
 
+        had_conversation_history = len(history) > 0
+
         # Save user message
         supabase.table("messages").insert({
             "conversation_id": convo_id, "role": "user", "content": body.prompt
         }).execute()
+
+        if body.conversation_id:
+            _insert_usage_event(
+                uid,
+                "followup_used",
+                {
+                    "turn_number": len(history) + 1,
+                    "query_length": len(body.prompt),
+                },
+            )
 
         # --- STEP 1: Multi-query search ---
         logger.info("Step 1: Running multi-query search for: %s", body.prompt)
@@ -1263,8 +1393,25 @@ async def run_research(request: Request, body: ResearchRequest, authorization: s
         }
         message_res = supabase.table("messages").insert(message_to_save).execute()
 
+        response_time_ms = (time.time() - start) * 1000
+        _insert_usage_event(
+            uid,
+            "research_completed",
+            {
+                "query_length": len(body.prompt),
+                "sources_found": len(sources),
+                "facts_extracted": len(facts),
+                "chart_generated": bool(chart_data),
+                "has_conversation_history": had_conversation_history,
+                "response_time_ms": round(response_time_ms, 2),
+                "word_count": len((report_content or "").split()),
+            },
+        )
+
         return {"conversation_id": convo_id, "new_messages": message_res.data}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in run_research: %s", e)
         raise HTTPException(status_code=500, detail="Failed to run research")

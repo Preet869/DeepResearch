@@ -293,6 +293,7 @@ const Dashboard = () => {
   const [editFolderData, setEditFolderData] = useState(null);
   const [editFolderName, setEditFolderName] = useState('');
   const [editFolderColor, setEditFolderColor] = useState('#3B82F6');
+  const [usage, setUsage] = useState({ reports_used: 0, reports_limit: 5, reports_remaining: 5 });
 
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -360,16 +361,30 @@ const Dashboard = () => {
     }
   }, [token]);
 
+  const fetchUsage = useCallback(async () => {
+    try {
+      const response = await fetch(config.endpoints.usage, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUsage(data);
+      }
+    } catch (error) {
+      console.error('Error fetching usage:', error);
+    }
+  }, [token]);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      await Promise.all([fetchFolders(), fetchConversations()]);
+      await Promise.all([fetchFolders(), fetchConversations(), fetchUsage()]);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  }, [fetchFolders, fetchConversations]);
+  }, [fetchFolders, fetchConversations, fetchUsage]);
 
   useEffect(() => {
     if (token) {
@@ -834,31 +849,52 @@ const Dashboard = () => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 mb-8">
               <div className="text-center">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">Start New Research</h2>
-                <p className="text-gray-600 mb-6">
+                <p className="text-gray-600 mb-2">
                   {selectedFolder 
                     ? `Creating research in "${selectedFolder.name}" folder`
                     : 'Begin your next research project with AI-powered insights'
                   }
                 </p>
+
+                {/* Usage pill */}
+                <div className="flex items-center justify-center mb-6">
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                    usage.reports_used >= usage.reports_limit
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {usage.reports_used}/{usage.reports_limit} reports used this month
+                  </span>
+                </div>
+
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <button
-                    onClick={startNewResearch}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center justify-center"
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    Start Research
-                  </button>
-                  <button
-                    onClick={() => navigate('/compare')}
-                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center justify-center"
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    Compare Articles
-                  </button>
+                  {usage.reports_used >= usage.reports_limit ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <button
+                        disabled
+                        className="bg-gray-300 text-gray-500 px-8 py-3 rounded-lg font-medium cursor-not-allowed inline-flex items-center justify-center"
+                        title="Monthly report limit reached"
+                      >
+                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        </svg>
+                        5 Reports Used
+                      </button>
+                      <p className="text-xs text-gray-500 max-w-xs">
+                        You've used all 5 free reports for this month. Check back next month for more.
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={startNewResearch}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center justify-center"
+                    >
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      Start Research
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
