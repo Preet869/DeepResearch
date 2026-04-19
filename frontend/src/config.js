@@ -19,5 +19,6 @@ export const config = {
     conversations: `${API_BASE_URL}/conversations`,
     folders: `${API_BASE_URL}/folders`,
     compareArticles: `${API_BASE_URL}/compare-articles`,
+    citationMetadata: `${API_BASE_URL}/citation-metadata`,
   }
 };

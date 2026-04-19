@@ -5,9 +5,7 @@ import Header from './Header';
 import LayeredResearchDisplay from './LayeredResearchDisplay';
 import ExportManager from './components/ExportManager';
 import CitationHelper from './components/CitationHelper';
-import SourceTracker from './components/SourceTracker';
 import Analytics from './components/Analytics';
-import Schedule from './components/Schedule';
 import ResearchLibrary from './components/ResearchLibrary';
 import { config } from './config';
 
@@ -26,9 +24,7 @@ const ResearchPage = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showExportManager, setShowExportManager] = useState(false);
   const [showCitationHelper, setShowCitationHelper] = useState(false);
-  const [showSourceTracker, setShowSourceTracker] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
   const [showResearchLibrary, setShowResearchLibrary] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -251,7 +247,7 @@ const ResearchPage = () => {
         folder_id: folderId || undefined
       };
 
-      const response = await fetch(`${config.apiBaseUrl}/research`, {
+      const response = await fetch(`${config.API_BASE_URL}/research`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -351,39 +347,6 @@ const ResearchPage = () => {
       printWindow.print();
       printWindow.close();
     }, 250);
-  };
-
-  const exportToMarkdown = () => {
-    if (messages.length === 0) return;
-    
-    const mainReport = messages.filter(m => m.role === 'assistant')[0];
-    if (!mainReport) return;
-
-    const content = `# ${conversationTitle || 'Research Report'}\n\n${mainReport.content}`;
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'research-report.md';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportToJSON = () => {
-    if (messages.length === 0) return;
-    
-    const data = {
-      title: conversationTitle || 'Research Report',
-      messages: messages,
-      exportedAt: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'research-data.json';
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const isNewResearch = messages.length === 0;
@@ -551,18 +514,6 @@ const ResearchPage = () => {
                   </button>
                   
                   <button 
-                    onClick={() => setShowSourceTracker(true)}
-                    className="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center">
-                      <svg className="w-4 h-4 mr-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                      </svg>
-                      <span className="text-sm font-medium">Source Tracker</span>
-                    </div>
-                  </button>
-                  
-                  <button 
                     onClick={() => setShowAnalytics(true)}
                     className="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                   >
@@ -571,18 +522,6 @@ const ResearchPage = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
                       <span className="text-sm font-medium">Analytics</span>
-                    </div>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setShowSchedule(true)}
-                    className="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center">
-                      <svg className="w-4 h-4 mr-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span className="text-sm font-medium">Schedule</span>
                     </div>
                   </button>
                   
@@ -840,26 +779,6 @@ const ResearchPage = () => {
                               <span className="mr-2">📄</span>
                               Export PDF
                             </button>
-                            <button
-                              onClick={() => {
-                                exportToMarkdown();
-                                setShowExportDropdown(false);
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-xs"
-                            >
-                              <span className="mr-2">📝</span>
-                              Markdown
-                            </button>
-                            <button
-                              onClick={() => {
-                                exportToJSON();
-                                setShowExportDropdown(false);
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-xs"
-                            >
-                              <span className="mr-2">💾</span>
-                              JSON Data
-                            </button>
                           </div>
                         )}
                       </div>
@@ -919,13 +838,6 @@ const ResearchPage = () => {
         />
       )}
 
-      {showSourceTracker && (
-        <SourceTracker
-          messages={messages}
-          onClose={() => setShowSourceTracker(false)}
-        />
-      )}
-
       {showAnalytics && (
         <Analytics
           messages={messages}
@@ -933,18 +845,8 @@ const ResearchPage = () => {
         />
       )}
 
-      {showSchedule && (
-        <Schedule
-          messages={messages}
-          onClose={() => setShowSchedule(false)}
-        />
-      )}
-
       {showResearchLibrary && (
-        <ResearchLibrary
-          messages={messages}
-          onClose={() => setShowResearchLibrary(false)}
-        />
+        <ResearchLibrary onClose={() => setShowResearchLibrary(false)} />
       )}
 
       {/* Delete Confirmation Modal */}

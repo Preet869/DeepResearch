@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { Document, HeadingLevel, Packer, Paragraph } from 'docx';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const ExportManager = ({ messages, conversationTitle, exportSelections, onClose }) => {
   const [exportFormat, setExportFormat] = useState('pdf');
@@ -8,9 +11,7 @@ const ExportManager = ({ messages, conversationTitle, exportSelections, onClose 
 
   const exportFormats = [
     { id: 'pdf', name: 'PDF Document', icon: '📄' },
-    { id: 'markdown', name: 'Markdown', icon: '📝' },
-    { id: 'json', name: 'JSON Data', icon: '🔧' },
-    { id: 'docx', name: 'Word Document', icon: '📘' }
+    { id: 'docx', name: 'Word Document', icon: '📘' },
   ];
 
   const handleExport = async () => {
@@ -36,12 +37,6 @@ const ExportManager = ({ messages, conversationTitle, exportSelections, onClose 
         case 'pdf':
           await exportToPDF(exportData);
           break;
-        case 'markdown':
-          await exportToMarkdown(exportData);
-          break;
-        case 'json':
-          await exportToJSON(exportData);
-          break;
         case 'docx':
           await exportToDocx(exportData);
           break;
@@ -57,95 +52,234 @@ const ExportManager = ({ messages, conversationTitle, exportSelections, onClose 
   };
 
   const exportToPDF = async (data) => {
-    // For now, we'll create a simple text-based PDF using jsPDF
-    // In production, you'd want to use a more sophisticated PDF library
-    const content = formatContentForPDF(data);
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+    const MM_MARGIN = 20;
+    const MM_MAX_WIDTH = 170;
+    const MM_FOOTER = 18;
 
-  const exportToMarkdown = async (data) => {
-    const content = formatContentForMarkdown(data);
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+    const ptToMm = (pt) => (pt / 72) * 25.4;
+    const lineHeightMm = (fontSizePt, factor = 1.2) => ptToMm(fontSizePt) * factor;
 
-  const exportToJSON = async (data) => {
-    const content = JSON.stringify(data, null, 2);
-    const blob = new Blob([content], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const pageW = () => doc.internal.pageSize.getWidth();
+    const pageH = () => doc.internal.pageSize.getHeight();
+    const contentBottom = () => pageH() - MM_FOOTER;
+    let y = MM_MARGIN;
+
+    const newPage = () => {
+      doc.addPage();
+      y = MM_MARGIN;
+    };
+
+    const ensureSpace = (neededMm) => {
+      if (y + neededMm > contentBottom()) {
+        newPage();
+      }
+    };
+
+    const writeWrapped = (text, fontSizePt, fontStyle, extraAfterBlock = 0) => {
+      doc.setFont('helvetica', fontStyle);
+      doc.setFontSize(fontSizePt);
+      const lh = lineHeightMm(fontSizePt);
+      const chunks = doc.splitTextToSize(text || ' ', MM_MAX_WIDTH);
+      for (const line of chunks) {
+        ensureSpace(lh);
+        doc.text(line, MM_MARGIN, y, { baseline: 'top' });
+        y += lh;
+      }
+      y += extraAfterBlock;
+    };
+
+    const addPageNumbers = () => {
+      const total = doc.getNumberOfPages();
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      for (let i = 1; i <= total; i += 1) {
+        doc.setPage(i);
+        doc.text(
+          `Page ${i} of ${total}`,
+          pageW() / 2,
+          pageH() - 10,
+          { align: 'center', baseline: 'middle' },
+        );
+      }
+    };
+
+    const assistantMarkdown = data.messages
+      .filter((m) => m.role === 'assistant' && m.content)
+      .map((m) => String(m.content).trim())
+      .filter(Boolean)
+      .join('\n\n');
+
+    let bodyText = assistantMarkdown;
+    let referencesText = '';
+    const refMatch = assistantMarkdown.match(/\n##\s*References\s*\n([\s\S]*)/i);
+    if (refMatch) {
+      bodyText = assistantMarkdown.slice(0, refMatch.index).trim();
+      referencesText = (refMatch[1] || '').trim();
+    }
+
+    if (!data.metadata?.includeSources) {
+      referencesText = '';
+    }
+
+    const title = data.title || 'Research';
+    const generatedLabel = data.metadata?.includeMetadata
+      ? `Generated: ${new Date().toLocaleString()}`
+      : `Generated: ${new Date().toLocaleDateString()}`;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    {
+      const titleLines = doc.splitTextToSize(title, MM_MAX_WIDTH);
+      const lh = lineHeightMm(16);
+      for (const line of titleLines) {
+        ensureSpace(lh);
+        doc.text(line, MM_MARGIN, y, { baseline: 'top' });
+        y += lh;
+      }
+      y += 2;
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    {
+      const lh = lineHeightMm(11);
+      ensureSpace(lh);
+      doc.text(generatedLabel, MM_MARGIN, y, { baseline: 'top' });
+      y += lh + 3;
+    }
+
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    ensureSpace(2);
+    doc.line(MM_MARGIN, y, MM_MARGIN + MM_MAX_WIDTH, y);
+    y += 5;
+
+    const renderBodyMarkdown = (body) => {
+      const lines = (body || '').split('\n');
+      for (const rawLine of lines) {
+        const line = rawLine ?? '';
+        const isH2 = /^##\s/.test(line) && !/^###\s/.test(line);
+        if (isH2) {
+          const headerPlain = line.replace(/^##\s+/, '').trim() || line;
+          writeWrapped(headerPlain, 13, 'bold', 2);
+        } else if (line.trim() === '') {
+          y += lineHeightMm(11) * 0.35;
+          ensureSpace(lineHeightMm(11) * 0.35);
+        } else {
+          writeWrapped(line, 11, 'normal', 1);
+        }
+      }
+    };
+
+    if (!bodyText.trim() && !referencesText) {
+      writeWrapped('No assistant report content to export.', 11, 'normal', 0);
+    } else {
+      renderBodyMarkdown(bodyText || ' ');
+    }
+
+    const chartEl = document.querySelector('.chart-export-area');
+    if (chartEl) {
+      try {
+        const canvas = await html2canvas(chartEl, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          width: chartEl.offsetWidth,
+          height: chartEl.offsetHeight,
+        });
+        if (canvas.width > 0 && canvas.height > 0) {
+          const imgData = canvas.toDataURL('image/png');
+          const imgWmm = MM_MAX_WIDTH;
+          const imgHmm = (canvas.height / canvas.width) * imgWmm;
+          if (contentBottom() - y < 100) {
+            newPage();
+          }
+          writeWrapped('Data Visualization', 13, 'bold', 2);
+          ensureSpace(imgHmm + 5);
+          doc.addImage(imgData, 'PNG', MM_MARGIN, y, imgWmm, imgHmm);
+          y += imgHmm + 5;
+        }
+      } catch {
+        /* skip chart silently */
+      }
+    }
+
+    if (referencesText) {
+      y += 4;
+      ensureSpace(lineHeightMm(13) + 2);
+      writeWrapped('References', 13, 'bold', 2);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      const refChunks = doc.splitTextToSize(referencesText, MM_MAX_WIDTH);
+      const lhRef = lineHeightMm(10);
+      for (const line of refChunks) {
+        ensureSpace(lhRef);
+        doc.text(line, MM_MARGIN, y, { baseline: 'top' });
+        y += lhRef;
+      }
+    }
+
+    addPageNumbers();
+
+    const baseName =
+      (data.title || 'research')
+        .replace(/[\\/:*?"<>|]+/g, '')
+        .trim()
+        .replace(/\s+/g, ' ') || 'research';
+    doc.save(`${baseName}.pdf`);
   };
 
   const exportToDocx = async (data) => {
-    // For now, we'll export as a simple text file
-    // In production, you'd want to use a library like docx
-    const content = formatContentForDocx(data);
-    const blob = new Blob([content], { type: 'text/plain' });
+    const reportTitle = data.title || 'Research';
+    const children = [
+      new Paragraph({
+        text: `Research Report: ${reportTitle}`,
+        heading: HeadingLevel.TITLE,
+      }),
+      new Paragraph({
+        text: `Generated on: ${new Date().toLocaleDateString()}`,
+      }),
+      new Paragraph({ text: '' }),
+    ];
+
+    data.messages.forEach((message, index) => {
+      const roleLabel = `${message.role.charAt(0).toUpperCase()}${message.role.slice(1)} Message ${index + 1}`;
+      children.push(
+        new Paragraph({
+          text: roleLabel,
+          heading: HeadingLevel.HEADING_2,
+        }),
+      );
+      const body = String(message.content ?? '');
+      body.split('\n').forEach((line) => {
+        children.push(new Paragraph({ text: line.length ? line : ' ' }));
+      });
+      children.push(new Paragraph({ text: '' }));
+    });
+
+    const doc = new Document({
+      sections: [{ children }],
+    });
+
+    const blob = await Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
+    const base =
+      (data.title || 'research')
+        .replace(/[^a-z0-9]/gi, '_')
+        .toLowerCase()
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '') || 'research';
+    a.download = `${base}.docx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
-
-  const formatContentForPDF = (data) => {
-    let content = `Research Report: ${data.title}\n`;
-    content += `Generated on: ${new Date().toLocaleDateString()}\n\n`;
-    
-    data.messages.forEach((message, index) => {
-      content += `=== ${message.role.toUpperCase()} MESSAGE ${index + 1} ===\n`;
-      content += `${message.content}\n\n`;
-    });
-    
-    return content;
-  };
-
-  const formatContentForMarkdown = (data) => {
-    let content = `# Research Report: ${data.title}\n\n`;
-    content += `**Generated on:** ${new Date().toLocaleDateString()}\n\n`;
-    
-    data.messages.forEach((message, index) => {
-      content += `## ${message.role.charAt(0).toUpperCase() + message.role.slice(1)} Message ${index + 1}\n\n`;
-      content += `${message.content}\n\n`;
-    });
-    
-    return content;
-  };
-
-  const formatContentForDocx = (data) => {
-    let content = `Research Report: ${data.title}\n`;
-    content += `Generated on: ${new Date().toLocaleDateString()}\n\n`;
-    
-    data.messages.forEach((message, index) => {
-      content += `${message.role.toUpperCase()} MESSAGE ${index + 1}:\n`;
-      content += `${message.content}\n\n`;
-    });
-    
-    return content;
   };
 
   return (

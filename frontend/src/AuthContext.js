@@ -1,14 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseClient';
 
-const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY;
-
-// Create Supabase client only if environment variables are available
-let supabase = null;
-if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} else {
+if (!supabase) {
   console.warn('Supabase environment variables not found. Authentication will not work.');
 }
 

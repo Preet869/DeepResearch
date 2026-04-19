@@ -146,8 +146,8 @@ cd DeepResearch
 ### 2. Set Up Environment Variables
 ```bash
 # Copy example files
-cp backend/env.example backend/.env
-cp frontend/env.local.example frontend/.env
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 
 # Edit with your API keys
 nano backend/.env
@@ -198,46 +198,33 @@ NODE_ENV=development
 
 ## 🗄️ Database Setup
 
-### Supabase Tables
-Run these SQL commands in your Supabase SQL editor:
+### Creating a New Supabase Project
 
-```sql
--- Folders Table
-CREATE TABLE folders (
-  id SERIAL PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  color TEXT DEFAULT '#3B82F6',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) and create a new project.
+2. Once the project is ready, go to **Settings > API** and copy:
+   - **Project URL** → `SUPABASE_URL` / `REACT_APP_SUPABASE_URL`
+   - **anon public key** → `REACT_APP_SUPABASE_ANON_KEY`
+   - **service_role secret key** → `SUPABASE_SERVICE_KEY`
+3. Open the **SQL Editor** in the Supabase dashboard and paste the contents of
+   [`backend/migrations/001_initial_schema.sql`](backend/migrations/001_initial_schema.sql),
+   then click **Run**. This creates all tables, indexes, and Row Level Security policies.
+4. Update your `.env` files (both backend and frontend) with the keys from step 2.
 
--- Conversations Table
-CREATE TABLE conversations (
-  id SERIAL PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  title TEXT NOT NULL,
-  folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+### Restoring Data from a Backup
 
--- Messages Table
-CREATE TABLE messages (
-  id SERIAL PRIMARY KEY,
-  conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-  content TEXT NOT NULL,
-  model_name TEXT,
-  metadata JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+If you have a backup from a previous Supabase project:
+- For CSV exports: use the Supabase Dashboard **Table Editor > Import** to load each table (load `folders` first, then `conversations`, then `messages` to satisfy foreign keys).
+- For a SQL dump: paste and run it in the SQL Editor after the schema migration.
 
--- Enable Row Level Security
-ALTER TABLE folders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+### Schema Reference
 
--- Create RLS Policies (see LOCAL_SETUP.md for complete policies)
-```
+The full schema lives in `backend/migrations/001_initial_schema.sql`. Summary of tables:
+
+| Table | Purpose |
+|-------|---------|
+| `folders` | User-created folders for organizing research |
+| `conversations` | Research sessions (each conversation has messages) |
+| `messages` | Individual user prompts and AI-generated reports |
 
 ## 🎯 Usage Guide
 

@@ -104,37 +104,6 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
     URL.revokeObjectURL(url);
   };
 
-  const exportToMarkdown = () => {
-    const content = `# ${mainReport.metadata.article1_title || 'Article 1'} vs ${mainReport.metadata.article2_title || 'Article 2'}\n\n${mainReport.content}`;
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'comparison-report.md';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportToJSON = () => {
-    const data = {
-      title: `${mainReport.metadata.article1_title || 'Article 1'} vs ${mainReport.metadata.article2_title || 'Article 2'}`,
-      article1_title: mainReport.metadata.article1_title,
-      article2_title: mainReport.metadata.article2_title,
-      comparison_focus: mainReport.metadata.comparison_focus,
-      context: mainReport.metadata.context,
-      content: mainReport.content,
-      metadata: mainReport.metadata,
-      exportedAt: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'comparison-data.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   // Enhanced granular export functions
   const copyExecutiveSummary = () => {
     const execSection = sections.find(s => s.title.toLowerCase().includes('executive summary'));
@@ -353,26 +322,6 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
                    >
                      <span className="mr-2">📄</span>
                      Export Text
-                   </button>
-                   <button
-                     onClick={() => {
-                       exportToMarkdown();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">📝</span>
-                     Markdown
-                   </button>
-                   <button
-                     onClick={() => {
-                       exportToJSON();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">💾</span>
-                     JSON Data
                    </button>
                    
                    {/* Granular Exports */}
