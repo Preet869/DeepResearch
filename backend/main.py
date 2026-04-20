@@ -991,6 +991,53 @@ async def root():
     return {"message": "DeepResearch API is running", "status": "healthy"}
 
 
+def _beta_user_limit() -> int:
+    raw = os.getenv("BETA_USER_LIMIT", "50")
+    try:
+        n = int(raw)
+        return max(1, n)
+    except ValueError:
+        logger.warning("Invalid BETA_USER_LIMIT=%r, using 50", raw)
+        return 50
+
+
+def _auth_user_count_at_least(min_count: int) -> bool:
+    """Return True if there are at least min_count registered auth users."""
+    total = 0
+    page = 1
+    per_page = max(100, min_count)
+    while total < min_count:
+        users = supabase.auth.admin.list_users(page=page, per_page=per_page)
+        batch = len(users)
+        total += batch
+        if total >= min_count:
+            return True
+        if batch < per_page:
+            return False
+        page += 1
+    return True
+
+
+@app.get("/beta-signup-status")
+async def beta_signup_status():
+    """Public endpoint: whether new email/password signups are still allowed (beta cap)."""
+    if not supabase:
+        raise HTTPException(
+            status_code=503,
+            detail="Signup availability could not be checked. Please try again later.",
+        )
+    limit = _beta_user_limit()
+    try:
+        full = _auth_user_count_at_least(limit)
+        return {"signup_open": not full, "limit": limit}
+    except Exception as e:
+        logger.exception("beta_signup_status failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Signup availability could not be checked. Please try again later.",
+        )
+
+
 @app.get("/health")
 async def health_check():
     """Health check that verifies Supabase and Claude connectivity."""

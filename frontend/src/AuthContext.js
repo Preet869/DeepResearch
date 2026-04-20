@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { supabase } from './supabaseClient';
+import { config, BETA_SIGNUP_FULL_MESSAGE } from './config';
 
 if (!supabase) {
   console.warn('Supabase environment variables not found. Authentication will not work.');
@@ -48,8 +49,25 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const signUpWithBetaCap = async (data) => {
+    if (!supabase) {
+      return Promise.reject(new Error('Supabase not configured'));
+    }
+    const res = await fetch(config.endpoints.betaSignupStatus);
+    if (!res.ok) {
+      return Promise.reject(
+        new Error('Signup availability could not be verified. Please try again later.'),
+      );
+    }
+    const { signup_open: signupOpen } = await res.json();
+    if (!signupOpen) {
+      return Promise.reject(new Error(BETA_SIGNUP_FULL_MESSAGE));
+    }
+    return supabase.auth.signUp(data);
+  };
+
   const value = {
-    signUp: (data) => supabase ? supabase.auth.signUp(data) : Promise.reject('Supabase not configured'),
+    signUp: signUpWithBetaCap,
     signIn: (data) => supabase ? supabase.auth.signInWithPassword(data) : Promise.reject('Supabase not configured'),
     signOut: () => supabase ? supabase.auth.signOut() : Promise.reject('Supabase not configured'),
     user,

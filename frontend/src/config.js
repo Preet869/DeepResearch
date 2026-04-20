@@ -11,6 +11,9 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
+export const BETA_SIGNUP_FULL_MESSAGE =
+  'Thank you for your interest! Our beta signup is full. We appreciate your support — please check back later.';
+
 export const config = {
   API_BASE_URL,
   endpoints: {
@@ -21,5 +24,6 @@ export const config = {
     folders: `${API_BASE_URL}/folders`,
     compareArticles: `${API_BASE_URL}/compare-articles`,
     citationMetadata: `${API_BASE_URL}/citation-metadata`,
+    betaSignupStatus: `${API_BASE_URL}/beta-signup-status`,
   }
 };
