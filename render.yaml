@@ -20,9 +20,9 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
-      - key: SUPABASE_JWT_SECRET
+# SUPABASE_ANON_KEY — same as Vercel REACT_APP_SUPABASE_ANON_KEY; lets auth.get_user work if SERVICE_KEY is wrong.
+      - key: SUPABASE_ANON_KEY
         sync: false
-      - key: ANTHROPIC_API_KEY
         sync: false
       - key: TAVILY_API_KEY
         sync: false

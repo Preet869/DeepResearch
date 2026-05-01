@@ -59,7 +59,13 @@ def _user_from_access_token_local(access_token: str) -> Optional[SimpleNamespace
             return None
         return SimpleNamespace(id=uid, email=payload.get("email"))
     except jwt.PyJWTError as e:
-        logger.debug("Local JWT validation failed: %s", e)
+        if (os.getenv("SUPABASE_JWT_SECRET") or "").strip():
+            logger.warning(
+                "Local JWT validation failed — check SUPABASE_JWT_SECRET and SUPABASE_URL match the Supabase project: %s",
+                e,
+            )
+        else:
+            logger.debug("Local JWT validation skipped or failed: %s", e)
         return None
 
 
@@ -84,6 +90,23 @@ def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
 claude_client = None
 tavily_client = None
 supabase = None
+_supabase_anon = None
+_supabase_anon_initialized = False
+
+
+def _get_supabase_anon():
+    """Lazy client using the anon key — valid for ``auth.get_user(jwt)`` when service key is misconfigured."""
+    global _supabase_anon, _supabase_anon_initialized
+    if _supabase_anon_initialized:
+        return _supabase_anon
+    _supabase_anon_initialized = True
+    url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/") or None
+    anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip() or None
+    if url and anon:
+        _supabase_anon = create_client(url, anon)
+        logger.info("Supabase anon client initialized (used for token validation fallback)")
+    return _supabase_anon
+
 
 def initialize_clients():
     global claude_client, tavily_client, supabase
@@ -228,13 +251,23 @@ async def get_user_from_token(access_token: str):
         local_user = _user_from_access_token_local(access_token)
         if local_user:
             return local_user
+
+        anon = _get_supabase_anon()
+        if anon:
+            try:
+                user_response = anon.auth.get_user(access_token)
+                if user_response and user_response.user:
+                    return user_response.user
+            except Exception as e:
+                logger.debug("get_user via anon client: %s", e)
+
         if not supabase:
             initialize_clients()
             if not supabase:
                 logger.error(
                     "Supabase client not initialized; set SUPABASE_URL and "
-                    "SUPABASE_SERVICE_KEY on the server (or add SUPABASE_JWT_SECRET "
-                    "for token validation)."
+                    "SUPABASE_SERVICE_KEY on the server (or set SUPABASE_JWT_SECRET "
+                    "or SUPABASE_ANON_KEY for token validation)."
                 )
                 return None
         user_response = supabase.auth.get_user(access_token)
