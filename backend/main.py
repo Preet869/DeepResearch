@@ -20,8 +20,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import anthropic
 from dotenv import load_dotenv
 from supabase import create_client
-from supabase.lib.client_options import SyncClientOptions
-import supabase.lib.client_options as supabase_client_options
 from tavily import TavilyClient
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -86,35 +84,6 @@ def _jwt_payload_from_api_key(key: str) -> Optional[dict]:
         return None
 
 
-def _project_ref_from_supabase_url(url: str) -> Optional[str]:
-    """Return project ref from ``https://<ref>.supabase.co``."""
-    if not (url or "").strip():
-        return None
-    try:
-        u = url.strip().rstrip("/")
-        if not u.startswith(("http://", "https://")):
-            u = f"https://{u}"
-        host = (urlparse(u).hostname or "").lower()
-        suf = ".supabase.co"
-        if host.endswith(suf):
-            return host[: -len(suf)]
-    except Exception:
-        pass
-    return None
-
-
-def _service_key_matches_supabase_url(service_key: str, supabase_url: str) -> bool:
-    """False when the key's ``ref`` claim is present and differs from URL host (cross-project mix-up)."""
-    url_ref = _project_ref_from_supabase_url(supabase_url)
-    payload = _jwt_payload_from_api_key(service_key)
-    if not payload or not url_ref:
-        return True
-    key_ref = payload.get("ref")
-    if key_ref is None:
-        return True
-    return str(key_ref).lower() == url_ref.lower()
-
-
 def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
     """Decode JWT ``role`` claim without verification (sanity-check anon vs service_role)."""
     data = _jwt_payload_from_api_key(key)
@@ -128,55 +97,10 @@ def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
 claude_client = None
 tavily_client = None
 supabase = None
-_supabase_anon = None
-_supabase_anon_initialized = False
-
-
-def _get_supabase_anon():
-    """Lazy client using the anon key — valid for ``auth.get_user(jwt)`` when service key is misconfigured."""
-    global _supabase_anon, _supabase_anon_initialized
-    if _supabase_anon_initialized:
-        return _supabase_anon
-    _supabase_anon_initialized = True
-    url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/") or None
-    anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip() or None
-    if url and anon:
-        _supabase_anon = create_client(url, anon)
-        logger.info("Supabase anon client initialized (used for token validation fallback)")
-    return _supabase_anon
-
-
-def _user_scoped_supabase(access_token: str):
-    """Supabase client that sends the user's access token to PostgREST (RLS sees ``auth.uid()``)."""
-    url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
-    anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip()
-    if not url or not anon:
-        raise RuntimeError(
-            "SUPABASE_URL and SUPABASE_ANON_KEY are required for user-scoped database access"
-        )
-    h = {
-        **supabase_client_options.DEFAULT_HEADERS.copy(),
-        "Authorization": f"Bearer {access_token.strip()}",
-    }
-    opts = SyncClientOptions(headers=h)
-    return create_client(url, anon, opts)
 
 
 def _db_for_access_token(access_token: str) -> Any:
-    """Prefer service_role global client only if key matches this project's URL; else anon + user JWT for REST."""
-    sk = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip()
-    url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
-    anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip()
-    role = _jwt_role_from_supabase_key(sk) if sk else None
-    service_usable = (
-        role == "service_role"
-        and supabase is not None
-        and _service_key_matches_supabase_url(sk, url)
-    )
-    if service_usable:
-        return supabase
-    if url and anon and access_token:
-        return _user_scoped_supabase(access_token)
+    """Return the global service-role client. It bypasses RLS; user_id filters in every query enforce access."""
     return supabase
 
 
@@ -215,13 +139,8 @@ def initialize_clients():
             logger.warning(
                 "Could not decode SUPABASE_SERVICE_KEY as a Supabase JWT; verify the full key was copied."
             )
-        elif supabase_url and not _service_key_matches_supabase_url(supabase_service_key, supabase_url):
-            logger.error(
-                "SUPABASE_SERVICE_KEY project ref does not match SUPABASE_URL — PostgREST will reject it. "
-                "Copy both from the same Supabase project (Settings → API), or set SUPABASE_ANON_KEY for REST."
-            )
         supabase = create_client(supabase_url, supabase_service_key)
-        logger.info("Supabase client initialized")
+        logger.info("Supabase client initialized (role=%s)", role)
 
     jwt_secret = (os.getenv("SUPABASE_JWT_SECRET") or "").strip()
     if jwt_secret and supabase_url:
@@ -329,24 +248,11 @@ async def get_user_from_token(access_token: str):
         if local_user:
             return local_user
 
-        anon = _get_supabase_anon()
-        if anon:
-            try:
-                user_response = anon.auth.get_user(access_token)
-                if user_response and user_response.user:
-                    return user_response.user
-            except Exception as e:
-                logger.debug("get_user via anon client: %s", e)
-
         if not supabase:
-            initialize_clients()
-            if not supabase:
-                logger.error(
-                    "Supabase client not initialized; set SUPABASE_URL and "
-                    "SUPABASE_SERVICE_KEY on the server (or set SUPABASE_JWT_SECRET "
-                    "or SUPABASE_ANON_KEY for token validation)."
-                )
-                return None
+            logger.error(
+                "Supabase client not initialized; set SUPABASE_URL and SUPABASE_SERVICE_KEY on Render."
+            )
+            return None
         user_response = supabase.auth.get_user(access_token)
         if user_response and user_response.user:
             return user_response.user
@@ -1348,26 +1254,33 @@ async def beta_signup_status():
 
 @app.get("/health")
 async def health_check():
-    """Health check that verifies Supabase and Claude connectivity."""
+    """Diagnostic endpoint — confirms env vars and client state. No auth required.
+
+    Visit https://<render-host>/health to verify Render env vars are set correctly before debugging 500s.
+    """
     from datetime import datetime, timezone
-    checks = {"supabase": False, "claude": False}
+    sk = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip()
+    url = (os.getenv("SUPABASE_URL") or "").strip()
+    role = _jwt_role_from_supabase_key(sk) if sk else None
+    supabase_reachable = False
     try:
         if supabase:
             supabase.table("conversations").select("id", count="exact").limit(0).execute()
-            checks["supabase"] = True
+            supabase_reachable = True
     except Exception as e:
-        logger.warning("Health check: Supabase unavailable: %s", e)
-    try:
-        if claude_client:
-            checks["claude"] = True
-    except Exception as e:
-        logger.warning("Health check: Claude client unavailable: %s", e)
-
-    all_healthy = all(checks.values())
+        logger.warning("Health check: Supabase unreachable: %s", e)
     return {
-        "status": "healthy" if all_healthy else "degraded",
+        "status": "ok",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "services": checks,
+        "supabase_url_set": bool(url),
+        "supabase_service_key_set": bool(sk),
+        "supabase_key_role": role,
+        "supabase_client_ready": supabase is not None,
+        "supabase_reachable": supabase_reachable,
+        "anthropic_key_set": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "tavily_key_set": bool(os.getenv("TAVILY_API_KEY")),
+        "frontend_url": os.getenv("FRONTEND_URL") or "(not set)",
+        "allowed_origins": _resolved_cors_allowed_origins(),
     }
 
 
