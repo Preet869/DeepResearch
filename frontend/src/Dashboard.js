@@ -293,10 +293,21 @@ const Dashboard = () => {
   const [editFolderData, setEditFolderData] = useState(null);
   const [editFolderName, setEditFolderName] = useState('');
   const [editFolderColor, setEditFolderColor] = useState('#3B82F6');
-  const [usage, setUsage] = useState({ reports_used: 0, reports_limit: 5, reports_remaining: 5 });
+  const [usage, setUsage] = useState({
+    reports_used: 0,
+    reports_limit: 5,
+    reports_remaining: 5,
+    is_admin: false,
+  });
 
   const { token } = useAuth();
   const navigate = useNavigate();
+
+  const isAdminUser = Boolean(usage.is_admin);
+  const limitReached =
+    !isAdminUser &&
+    usage.reports_limit != null &&
+    usage.reports_used >= usage.reports_limit;
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -858,17 +869,23 @@ const Dashboard = () => {
 
                 {/* Usage pill */}
                 <div className="flex items-center justify-center mb-6">
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                    usage.reports_used >= usage.reports_limit
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {usage.reports_used}/{usage.reports_limit} reports used this month
-                  </span>
+                  {isAdminUser ? (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                      Admin · unlimited reports this month
+                    </span>
+                  ) : (
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                      limitReached
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {usage.reports_used}/{usage.reports_limit} reports used this month
+                    </span>
+                  )}
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  {usage.reports_used >= usage.reports_limit ? (
+                <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap items-center">
+                  {limitReached ? (
                     <div className="flex flex-col items-center gap-2">
                       <button
                         disabled
@@ -895,6 +912,16 @@ const Dashboard = () => {
                       Start Research
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/compare')}
+                    className="bg-white border-2 border-blue-600 text-blue-700 hover:bg-blue-50 px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center justify-center"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                    </svg>
+                    Compare Articles
+                  </button>
                 </div>
               </div>
             </div>

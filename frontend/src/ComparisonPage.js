@@ -7,7 +7,7 @@ import Header from './Header';
 const ComparisonPage = () => {
   const { token } = useAuth();
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(false);
   const [inputMethod, setInputMethod] = useState('url'); // 'url' or 'text'
   const [comparisonFocus, setComparisonFocus] = useState('overall');

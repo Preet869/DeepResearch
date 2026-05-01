@@ -8,6 +8,9 @@ import LoginPage from './LoginPage';
 import DebugInfo from './DebugInfo';
 import './App.css';
 
+/** Set to true to show the floating debug panel in development. */
+const SHOW_DEBUG_PANEL = false;
+
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();
   return user ? children : <Navigate to="/login" />;
@@ -47,7 +50,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        {process.env.NODE_ENV === 'development' && <DebugInfo />}
+        {SHOW_DEBUG_PANEL && process.env.NODE_ENV === 'development' && <DebugInfo />}
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route 
