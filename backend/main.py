@@ -71,11 +71,35 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+def _resolved_cors_allowed_origins() -> List[str]:
+    raw = os.getenv("ALLOWED_ORIGINS")
+    if raw is None or not str(raw).strip():
+        raw = os.getenv("FRONTEND_URL")
+    if raw is None or not str(raw).strip():
+        raw = "http://localhost:3000"
+    return [o.strip() for o in str(raw).split(",") if o.strip()]
+
+
 @app.on_event("startup")
 async def startup_event():
     initialize_clients()
 
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
+allowed_origins = _resolved_cors_allowed_origins()
+
+if os.getenv("RENDER") == "true" and allowed_origins:
+    renders_localhost_only = all(
+        o.startswith(("http://127.", "http://localhost"))
+        for o in allowed_origins
+    )
+    if renders_localhost_only:
+        logger.warning(
+            "CORS allows only loopback origins on Render — browsers from Vercel will be blocked. "
+            "Set FRONTEND_URL=https://<your-production-host> "
+            "(or ALLOWED_ORIGINS for multiple comma-separated origins)."
+        )
+    else:
+        logger.info("CORS allowed origins: %s", allowed_origins)
 
 app.add_middleware(
     CORSMiddleware,
