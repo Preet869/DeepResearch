@@ -4,8 +4,8 @@ import Header from './Header';
 import PromptInput from './PromptInput';
 import LayeredResearchDisplay from './LayeredResearchDisplay';
 import ResearchTimeline from './components/ResearchTimeline';
-import { useAuth } from './AuthContext';
 import { config } from './config';
+import { apiFetch, AUTH_REQUIRED } from './apiClient';
 
 // We will add other components like ResultsDisplay here later
 
@@ -15,7 +15,6 @@ const MainPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeNodeIndex, setActiveNodeIndex] = useState(0);
   const [exportSelections, setExportSelections] = useState([]);
-  const { token } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
@@ -28,15 +27,12 @@ const MainPage = () => {
       setMessages([]);
       setConversationId(null);
     }
-  }, [location.search, token]);
+  }, [location.search]);
 
   const fetchMessages = async (convoId) => {
-    if (!token) return;
     setIsLoading(true);
     try {
-      const response = await fetch(config.endpoints.messages(convoId), {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await apiFetch(config.endpoints.messages(convoId));
       if (response.ok) {
         const data = await response.json();
         setMessages(data);
@@ -45,27 +41,24 @@ const MainPage = () => {
         setMessages([]);
       }
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
+        console.error("Error fetching messages:", error);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const handlePromptSubmit = async (prompt) => {
-    if (!token) {
-      console.error("Authentication token not found.");
-      return;
-    }
     setIsLoading(true);
 
     const requestBody = { prompt, conversation_id: conversationId };
 
     try {
-      const response = await fetch(config.endpoints.research, {
+      const response = await apiFetch(config.endpoints.research, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(requestBody),
       });

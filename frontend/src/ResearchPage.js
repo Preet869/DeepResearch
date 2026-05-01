@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from './AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from './Header';
 import LayeredResearchDisplay from './LayeredResearchDisplay';
@@ -8,6 +7,7 @@ import CitationHelper from './components/CitationHelper';
 import Analytics from './components/Analytics';
 import ResearchLibrary from './components/ResearchLibrary';
 import { config } from './config';
+import { apiFetch, AUTH_REQUIRED } from './apiClient';
 
 const ResearchPage = () => {
   const [messages, setMessages] = useState([]);
@@ -28,15 +28,12 @@ const ResearchPage = () => {
   const [showResearchLibrary, setShowResearchLibrary] = useState(false);
   const dropdownRef = useRef(null);
 
-  const { token } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const loadConversation = useCallback(async (convoId) => {
     try {
-      const response = await fetch(config.endpoints.messages(convoId), {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await apiFetch(config.endpoints.messages(convoId));
       
       if (response.ok) {
         const data = await response.json();
@@ -49,9 +46,11 @@ const ResearchPage = () => {
         }
       }
     } catch (error) {
-      console.error('Error loading conversation:', error);
+      if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
+        console.error('Error loading conversation:', error);
+      }
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     const convoId = searchParams.get('convo_id');
@@ -65,7 +64,7 @@ const ResearchPage = () => {
     if (folderIdParam) {
       setFolderId(parseInt(folderIdParam));
     }
-  }, [searchParams, token, loadConversation]);
+  }, [searchParams, loadConversation]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -109,11 +108,10 @@ const ResearchPage = () => {
         folder_id: folderId || undefined
       };
 
-      const response = await fetch(config.endpoints.research, {
+      const response = await apiFetch(config.endpoints.research, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(requestBody)
       });
@@ -155,9 +153,8 @@ const ResearchPage = () => {
     if (!conversationId) return;
 
     try {
-      const response = await fetch(`${config.endpoints.conversations}/${conversationId}`, {
+      const response = await apiFetch(`${config.endpoints.conversations}/${conversationId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
@@ -247,11 +244,10 @@ const ResearchPage = () => {
         folder_id: folderId || undefined
       };
 
-      const response = await fetch(`${config.API_BASE_URL}/research`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/research`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(requestBody)
       });

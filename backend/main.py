@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 
 from fastapi import FastAPI, HTTPException, Header, Request, Response
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from typing import Annotated, List, Dict, Optional
 from fastapi.middleware.cors import CORSMiddleware
 import anthropic
 from dotenv import load_dotenv
@@ -167,6 +167,35 @@ async def get_user_from_token(access_token: str):
     except Exception as e:
         logger.warning("Token validation failed: %s", e)
         return None
+
+
+def parse_bearer_token(authorization: Optional[str]) -> Optional[str]:
+    """Extract JWT from Authorization header without raising on malformed input."""
+    if authorization is None:
+        return None
+    s = str(authorization).strip()
+    if not s:
+        return None
+    parts = s.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    token = parts[1].strip()
+    return token or None
+
+
+async def require_authenticated_user(authorization: Optional[str]):
+    """Require a valid Supabase JWT; raise 401 if missing or invalid."""
+    token = parse_bearer_token(authorization)
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization bearer token",
+        )
+    user = await get_user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return user
+
 
 # --- Claude Helper ---
 def call_claude(system_prompt: str, user_content: str, max_tokens: int = 2000) -> str:
@@ -1138,12 +1167,9 @@ async def health_check():
 
 # --- Folder Endpoints ---
 @app.get("/folders")
-async def get_folders(authorization: str = Header(...)):
+async def get_folders(authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         folders_response = supabase.table("folders").select("*").eq("user_id", user.id).order("created_at", desc=False).execute()
 
@@ -1161,12 +1187,9 @@ async def get_folders(authorization: str = Header(...)):
 
 
 @app.post("/folders")
-async def create_folder(folder: FolderCreate, authorization: str = Header(...)):
+async def create_folder(folder: FolderCreate, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
         response = supabase.table("folders").insert({"user_id": user.id, "name": folder.name, "color": folder.color}).execute()
         return response.data[0]
     except HTTPException:
@@ -1177,12 +1200,9 @@ async def create_folder(folder: FolderCreate, authorization: str = Header(...)):
 
 
 @app.put("/folders/{folder_id}")
-async def update_folder(folder_id: int, folder: FolderUpdate, authorization: str = Header(...)):
+async def update_folder(folder_id: int, folder: FolderUpdate, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
         if not folder_check.data:
@@ -1204,12 +1224,9 @@ async def update_folder(folder_id: int, folder: FolderUpdate, authorization: str
 
 
 @app.delete("/folders/{folder_id}")
-async def delete_folder(folder_id: int, delete_conversations: bool = False, authorization: str = Header(...)):
+async def delete_folder(folder_id: int, delete_conversations: bool = False, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         folder_check = supabase.table("folders").select("id, name").eq("id", folder_id).eq("user_id", user.id).execute()
         if not folder_check.data:
@@ -1238,12 +1255,9 @@ async def delete_folder(folder_id: int, delete_conversations: bool = False, auth
 
 
 @app.post("/folders/reorder")
-async def reorder_folders(reorder_data: FolderReorder, authorization: str = Header(...)):
+async def reorder_folders(reorder_data: FolderReorder, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         for folder_id in reorder_data.folder_ids:
             folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
@@ -1265,12 +1279,9 @@ async def reorder_folders(reorder_data: FolderReorder, authorization: str = Head
 
 
 @app.post("/conversations/move")
-async def move_conversation(move_data: ConversationMove, authorization: str = Header(...)):
+async def move_conversation(move_data: ConversationMove, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         convo_check = supabase.table("conversations").select("id").eq("id", move_data.conversation_id).eq("user_id", user.id).execute()
         if not convo_check.data:
@@ -1291,12 +1302,9 @@ async def move_conversation(move_data: ConversationMove, authorization: str = He
 
 
 @app.get("/conversations")
-async def get_conversations(folder_id: Optional[int] = None, authorization: str = Header(...)):
+async def get_conversations(folder_id: Optional[int] = None, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         query = supabase.table("conversations").select("id, title, created_at, folder_id").eq("user_id", user.id)
         if folder_id is not None:
@@ -1311,12 +1319,9 @@ async def get_conversations(folder_id: Optional[int] = None, authorization: str 
 
 
 @app.get("/messages/{conversation_id}")
-async def get_messages(conversation_id: int, authorization: str = Header(...)):
+async def get_messages(conversation_id: int, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         convo_res = supabase.table("conversations").select("id").eq("id", conversation_id).eq("user_id", user.id).execute()
         if not convo_res.data:
@@ -1332,12 +1337,9 @@ async def get_messages(conversation_id: int, authorization: str = Header(...)):
 
 
 @app.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: int, authorization: str = Header(...)):
+async def delete_conversation(conversation_id: int, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         convo_check = supabase.table("conversations").select("id, title").eq("id", conversation_id).eq("user_id", user.id).execute()
         if not convo_check.data:
@@ -1358,13 +1360,10 @@ async def delete_conversation(conversation_id: int, authorization: str = Header(
 # MAIN RESEARCH ENDPOINT — 4-STEP PIPELINE
 # =============================================================================
 @app.get("/usage")
-async def get_usage(authorization: str = Header(...)):
+async def get_usage(authorization: Annotated[Optional[str], Header()] = None):
     """Returns the user's report usage for the current calendar month."""
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
         reports_used = _count_monthly_reports(user.id)
         uid = str(user.id)
         if _user_is_admin(uid):
@@ -1392,7 +1391,7 @@ async def get_usage(authorization: str = Header(...)):
 async def telemetry_export(
     request: Request,
     body: ExportTelemetryRequest,
-    authorization: str = Header(...),
+    authorization: Annotated[Optional[str], Header()] = None,
 ):
     """Write-only: logs export_triggered (no usage_events rows are returned)."""
     allowed = {"pdf", "docx", "markdown", "json"}
@@ -1400,13 +1399,7 @@ async def telemetry_export(
     if fmt not in allowed:
         raise HTTPException(status_code=400, detail="Invalid format")
 
-    try:
-        access_token = authorization.split(" ")[1]
-    except IndexError:
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-    user = await get_user_from_token(access_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    user = await require_authenticated_user(authorization)
 
     _insert_usage_event(
         str(user.id),
@@ -1418,7 +1411,7 @@ async def telemetry_export(
 
 @app.post("/research")
 @limiter.limit("20/hour")
-async def run_research(request: Request, body: ResearchRequest, authorization: str = Header(...)):
+async def run_research(request: Request, body: ResearchRequest, authorization: Annotated[Optional[str], Header()] = None):
     """
     4-step pipeline:
     1. Multi-query search with source scoring
@@ -1429,10 +1422,7 @@ async def run_research(request: Request, body: ResearchRequest, authorization: s
     """
     start = time.time()
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         uid = str(user.id)
         reports_used = _count_monthly_reports(user.id)
@@ -1569,12 +1559,9 @@ async def run_research(request: Request, body: ResearchRequest, authorization: s
 # =============================================================================
 @app.post("/compare-articles")
 @limiter.limit("10/hour")
-async def compare_articles(request: Request, body: ArticleComparisonRequest, authorization: str = Header(...)):
+async def compare_articles(request: Request, body: ArticleComparisonRequest, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        access_token = authorization.split(" ")[1]
-        user = await get_user_from_token(access_token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await require_authenticated_user(authorization)
 
         uid = str(user.id)
         reports_used = _count_monthly_reports(user.id)
@@ -1677,16 +1664,10 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
 async def citation_metadata_endpoint(
     request: Request,
     body: CitationMetadataRequest,
-    authorization: str = Header(...),
+    authorization: Annotated[Optional[str], Header()] = None,
 ):
     """Fetch public URLs server-side and extract title, author, and year for citations."""
-    try:
-        access_token = authorization.split(" ")[1]
-    except IndexError:
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-    user = await get_user_from_token(access_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    await require_authenticated_user(authorization)
 
     seen = set()
     urls: List[str] = []

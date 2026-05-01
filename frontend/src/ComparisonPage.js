@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from './AuthContext';
 import { config } from './config';
+import { apiFetch } from './apiClient';
 import Header from './Header';
 
 const ComparisonPage = () => {
-  const { token } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -61,11 +60,10 @@ const ComparisonPage = () => {
         })
       };
 
-      const response = await fetch(config.endpoints.compareArticles, {
+      const response = await apiFetch(config.endpoints.compareArticles, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(requestBody)
       });

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { config } from './config';
-import { supabase } from './supabaseClient';
+import { apiFetch, getSupabaseAccessToken, AUTH_REQUIRED } from './apiClient';
 import Header from './Header';
 import {
   DndContext,
@@ -23,13 +23,6 @@ import {
 } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-
-async function dashboardAccessToken() {
-  if (!supabase) return null;
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error || !session?.access_token) return null;
-  return session.access_token;
-}
 
 // Draggable Research Card Component
 const DraggableResearchCard = ({ conversation, onOpen, onDelete }) => {
@@ -331,13 +324,9 @@ const Dashboard = () => {
 
   const fetchFolders = useCallback(async (presetAccessToken = null) => {
     try {
-      const accessToken =
-        presetAccessToken ?? (await dashboardAccessToken());
-      if (!accessToken) return;
-
-      const response = await fetch(config.endpoints.folders, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const opts =
+        presetAccessToken != null ? { accessToken: presetAccessToken } : {};
+      const response = await apiFetch(config.endpoints.folders, opts);
 
       if (response.ok) {
         const data = await response.json();
@@ -345,23 +334,21 @@ const Dashboard = () => {
         setStats(prev => ({ ...prev, totalFolders: data.length }));
       }
     } catch (error) {
-      console.error('Error fetching folders:', error);
+      if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
+        console.error('Error fetching folders:', error);
+      }
     }
   }, []);
 
   const fetchConversations = useCallback(async (folderId = null, presetAccessToken = null) => {
     try {
-      const accessToken =
-        presetAccessToken ?? (await dashboardAccessToken());
-      if (!accessToken) return;
-
-      const url = folderId
+      const opts =
+        presetAccessToken != null ? { accessToken: presetAccessToken } : {};
+      const url = folderId 
         ? `${config.endpoints.conversations}?folder_id=${folderId}`
         : config.endpoints.conversations;
 
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const response = await apiFetch(url, opts);
 
       if (response.ok) {
         const data = await response.json();
@@ -383,32 +370,32 @@ const Dashboard = () => {
         }
       }
     } catch (error) {
-      console.error('Error fetching conversations:', error);
+      if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
+        console.error('Error fetching conversations:', error);
+      }
     }
   }, []);
 
   const fetchUsage = useCallback(async (presetAccessToken = null) => {
     try {
-      const accessToken =
-        presetAccessToken ?? (await dashboardAccessToken());
-      if (!accessToken) return;
-
-      const response = await fetch(config.endpoints.usage, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const opts =
+        presetAccessToken != null ? { accessToken: presetAccessToken } : {};
+      const response = await apiFetch(config.endpoints.usage, opts);
       if (response.ok) {
         const data = await response.json();
         setUsage(data);
       }
     } catch (error) {
-      console.error('Error fetching usage:', error);
+      if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
+        console.error('Error fetching usage:', error);
+      }
     }
   }, []);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const accessToken = await dashboardAccessToken();
+      const accessToken = await getSupabaseAccessToken();
       if (!accessToken) return;
       await Promise.all([
         fetchFolders(accessToken),
@@ -416,7 +403,9 @@ const Dashboard = () => {
         fetchUsage(accessToken),
       ]);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
+        console.error('Error fetching data:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -431,14 +420,10 @@ const Dashboard = () => {
     if (!newFolderName.trim()) return;
 
     try {
-      const accessToken = await dashboardAccessToken();
-      if (!accessToken) return;
-
-      const response = await fetch(`${config.API_BASE_URL}/folders`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/folders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           name: newFolderName,
@@ -461,14 +446,10 @@ const Dashboard = () => {
     if (!editFolderName.trim() || !editFolderData) return;
 
     try {
-      const accessToken = await dashboardAccessToken();
-      if (!accessToken) return;
-
-      const response = await fetch(`${config.API_BASE_URL}/folders/${editFolderData.id}`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/folders/${editFolderData.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           name: editFolderName,
@@ -510,14 +491,10 @@ const Dashboard = () => {
 
   const moveConversationToFolder = async (conversationId, folderId) => {
     try {
-      const accessToken = await dashboardAccessToken();
-      if (!accessToken) return false;
-
-      const response = await fetch(`${config.API_BASE_URL}/conversations/move`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/conversations/move`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           conversation_id: conversationId,
@@ -539,14 +516,10 @@ const Dashboard = () => {
 
   const reorderFolders = async (newOrder) => {
     try {
-      const accessToken = await dashboardAccessToken();
-      if (!accessToken) return false;
-
-      const response = await fetch(`${config.API_BASE_URL}/folders/reorder`, {
+      const response = await apiFetch(`${config.API_BASE_URL}/folders/reorder`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           folder_ids: newOrder
@@ -589,13 +562,9 @@ const Dashboard = () => {
     if (!itemToDelete) return;
 
     try {
-      const accessToken = await dashboardAccessToken();
-      if (!accessToken) return;
-
       if (deleteType === 'conversation') {
-        const response = await fetch(`${config.API_BASE_URL}/conversations/${itemToDelete.id}`, {
+        const response = await apiFetch(`${config.API_BASE_URL}/conversations/${itemToDelete.id}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${accessToken}` },
         });
 
         if (response.ok) {
@@ -609,9 +578,8 @@ const Dashboard = () => {
           throw new Error('Failed to delete research');
         }
       } else if (deleteType === 'folder') {
-        const response = await fetch(`${config.API_BASE_URL}/folders/${itemToDelete.id}?delete_conversations=${deleteAllResearch}`, {
+        const response = await apiFetch(`${config.API_BASE_URL}/folders/${itemToDelete.id}?delete_conversations=${deleteAllResearch}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${accessToken}` },
         });
 
         if (response.ok) {

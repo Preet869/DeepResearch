@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../AuthContext';
 import { config } from '../config';
+import { apiFetch, AUTH_REQUIRED } from '../apiClient';
 
 const YEAR_IN_URL = /\b(201[5-9]|202[0-9])\b/;
 
@@ -72,7 +72,6 @@ const generateCitationForSource = (source, style) => {
 };
 
 const CitationHelper = ({ messages, onClose }) => {
-  const { token } = useAuth();
   const [citationStyle, setCitationStyle] = useState('apa');
   const [citations, setCitations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -91,13 +90,12 @@ const CitationHelper = ({ messages, onClose }) => {
       const urls = extractUrlsFromMessages(messages);
       const metaByIndex = [];
 
-      if (token && urls.length > 0) {
+      if (urls.length > 0) {
         try {
-          const response = await fetch(config.endpoints.citationMetadata, {
+          const response = await apiFetch(config.endpoints.citationMetadata, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ urls }),
           });
@@ -109,7 +107,9 @@ const CitationHelper = ({ messages, onClose }) => {
             });
           }
         } catch (err) {
-          console.error('Citation metadata request failed:', err);
+          if (err?.message !== AUTH_REQUIRED && err?.code !== AUTH_REQUIRED) {
+            console.error('Citation metadata request failed:', err);
+          }
         }
       }
 
@@ -145,7 +145,7 @@ const CitationHelper = ({ messages, onClose }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [messages, citationStyle, token]);
+  }, [messages, citationStyle]);
 
   useEffect(() => {
     generateCitations();
