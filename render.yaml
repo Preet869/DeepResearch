@@ -3,6 +3,7 @@
 # Secrets (sync: false): set values in the Render Dashboard after sync.
 # SUPABASE_URL must match Vercel REACT_APP_SUPABASE_URL (same project).
 # SUPABASE_SERVICE_KEY must be the service_role secret from Supabase → Settings → API (never the anon key).
+# SUPABASE_JWT_SECRET (JWT signing secret, same screen) helps token validation if keys were mixed; DB/admin still need service_role.
 services:
   - type: web
     name: deepresearch-backend
@@ -18,6 +19,8 @@ services:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false

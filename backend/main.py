@@ -7,13 +7,15 @@ import logging
 import asyncio
 import ipaddress
 from urllib.parse import urlparse
+from types import SimpleNamespace
+from typing import Annotated, List, Dict, Optional
 
 import httpx
+import jwt
 from bs4 import BeautifulSoup
 
 from fastapi import FastAPI, HTTPException, Header, Request, Response
 from pydantic import BaseModel, Field
-from typing import Annotated, List, Dict, Optional
 from fastapi.middleware.cors import CORSMiddleware
 import anthropic
 from dotenv import load_dotenv
@@ -30,6 +32,35 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("deepresearch")
+
+
+def _user_from_access_token_local(access_token: str) -> Optional[SimpleNamespace]:
+    """Validate access JWT with the project's JWT secret (no GoTrue round-trip).
+
+    Use when ``SUPABASE_SERVICE_KEY`` is missing or does not match the project but
+    ``SUPABASE_URL`` + ``SUPABASE_JWT_SECRET`` do — e.g. mixed env after a branch/deploy change.
+    """
+    secret = (os.getenv("SUPABASE_JWT_SECRET") or "").strip()
+    base_url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+    if not secret or not base_url:
+        return None
+    expected_iss = f"{base_url}/auth/v1"
+    try:
+        payload = jwt.decode(
+            access_token,
+            secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+            issuer=expected_iss,
+            leeway=120,
+        )
+        uid = payload.get("sub")
+        if not uid:
+            return None
+        return SimpleNamespace(id=uid, email=payload.get("email"))
+    except jwt.PyJWTError as e:
+        logger.debug("Local JWT validation failed: %s", e)
+        return None
 
 
 def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
@@ -91,6 +122,10 @@ def initialize_clients():
             )
         supabase = create_client(supabase_url, supabase_service_key)
         logger.info("Supabase client initialized")
+
+    jwt_secret = (os.getenv("SUPABASE_JWT_SECRET") or "").strip()
+    if jwt_secret and supabase_url:
+        logger.info("SUPABASE_JWT_SECRET is set; validating user access tokens locally first.")
 
 initialize_clients()
 
@@ -190,10 +225,17 @@ class ExportTelemetryRequest(BaseModel):
 async def get_user_from_token(access_token: str):
     """Validates JWT token via Supabase and returns user information."""
     try:
+        local_user = _user_from_access_token_local(access_token)
+        if local_user:
+            return local_user
         if not supabase:
             initialize_clients()
             if not supabase:
-                logger.error("Supabase client not initialized")
+                logger.error(
+                    "Supabase client not initialized; set SUPABASE_URL and "
+                    "SUPABASE_SERVICE_KEY on the server (or add SUPABASE_JWT_SECRET "
+                    "for token validation)."
+                )
                 return None
         user_response = supabase.auth.get_user(access_token)
         if user_response and user_response.user:
@@ -1158,12 +1200,16 @@ def _auth_user_count_at_least(min_count: int) -> bool:
 @app.get("/beta-signup-status")
 async def beta_signup_status():
     """Public endpoint: whether new email/password signups are still allowed (beta cap)."""
+    limit = _beta_user_limit()
     if not supabase:
+        # Client needs SUPABASE_URL + SUPABASE_SERVICE_KEY; if only URL is set (mis-synced env),
+        # avoid blocking the login UI with 503.
+        if (os.getenv("SUPABASE_URL") or "").strip():
+            return {"signup_open": True, "limit": limit, "degraded": True}
         raise HTTPException(
             status_code=503,
             detail="Signup availability could not be checked. Please try again later.",
         )
-    limit = _beta_user_limit()
     try:
         full = _auth_user_count_at_least(limit)
         return {"signup_open": not full, "limit": limit, "degraded": False}
