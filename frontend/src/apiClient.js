@@ -19,6 +19,10 @@ export async function getSupabaseAccessToken() {
 
 export const AUTH_REQUIRED = 'AUTH_REQUIRED';
 
+/** Limits parallel 401 → refreshSession storms against Supabase Auth (429). */
+let lastRefreshSessionAttemptAt = 0;
+const REFRESH_SESSION_MIN_INTERVAL_MS = 5000;
+
 async function authorizeHeaders(headersObj, auth, accessTokenOverride) {
   if (!auth) return headersObj;
   const token =
@@ -52,6 +56,11 @@ export async function apiFetch(input, init = {}) {
   let response = await fetch(input, { ...rest, headers: headersObj });
 
   if (auth && response.status === 401 && supabase) {
+    const now = Date.now();
+    if (now - lastRefreshSessionAttemptAt < REFRESH_SESSION_MIN_INTERVAL_MS) {
+      return response;
+    }
+    lastRefreshSessionAttemptAt = now;
     const { error: refErr } = await supabase.auth.refreshSession();
     if (!refErr) {
       const headersRetry = headers instanceof Headers

@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import base64
 import logging
 import asyncio
 import ipaddress
@@ -30,6 +31,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger("deepresearch")
 
+
+def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
+    """Decode JWT ``role`` claim without verification (sanity-check anon vs service_role)."""
+    if not key or not isinstance(key, str):
+        return None
+    parts = key.strip().split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+        raw = base64.urlsafe_b64decode(payload_b64.encode("ascii"))
+        data = json.loads(raw)
+        role = data.get("role")
+        return str(role) if role is not None else None
+    except Exception:
+        return None
+
+
 # --- Initialize Clients ---
 claude_client = None
 tavily_client = None
@@ -40,8 +59,8 @@ def initialize_clients():
 
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
     tavily_api_key = os.getenv("TAVILY_API_KEY")
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_service_key = os.getenv("SUPABASE_SERVICE_KEY")
+    supabase_url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/") or None
+    supabase_service_key = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip() or None
 
     if anthropic_api_key:
         claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
@@ -54,6 +73,22 @@ def initialize_clients():
         logger.info("Tavily client initialized")
 
     if supabase_url and supabase_service_key:
+        role = _jwt_role_from_supabase_key(supabase_service_key)
+        if role == "anon":
+            logger.error(
+                "SUPABASE_SERVICE_KEY has JWT role 'anon'. Use the service_role secret from "
+                "Supabase Dashboard → Settings → API (not the anon public key). Admin Auth API will fail."
+            )
+        elif role and role != "service_role":
+            logger.warning(
+                "SUPABASE_SERVICE_KEY JWT role is %r (expected 'service_role'). "
+                "Admin Auth API may return 401 Invalid API key.",
+                role,
+            )
+        elif role is None:
+            logger.warning(
+                "Could not decode SUPABASE_SERVICE_KEY as a Supabase JWT; verify the full key was copied."
+            )
         supabase = create_client(supabase_url, supabase_service_key)
         logger.info("Supabase client initialized")
 
@@ -1131,13 +1166,11 @@ async def beta_signup_status():
     limit = _beta_user_limit()
     try:
         full = _auth_user_count_at_least(limit)
-        return {"signup_open": not full, "limit": limit}
+        return {"signup_open": not full, "limit": limit, "degraded": False}
     except Exception as e:
         logger.exception("beta_signup_status failed: %s", e)
-        raise HTTPException(
-            status_code=503,
-            detail="Signup availability could not be checked. Please try again later.",
-        )
+        # Admin API (list_users) requires service_role; allow login UI to load if misconfigured.
+        return {"signup_open": True, "limit": limit, "degraded": True}
 
 
 @app.get("/health")

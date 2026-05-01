@@ -1,6 +1,8 @@
 # Production: https://deepresearch-1-gdhd.onrender.com  |  Vercel: https://deepresearchbeta.vercel.app
 # Link in Dashboard → Blueprints, or mirror env vars on your Web Service.
 # Secrets (sync: false): set values in the Render Dashboard after sync.
+# SUPABASE_URL must match Vercel REACT_APP_SUPABASE_URL (same project).
+# SUPABASE_SERVICE_KEY must be the service_role secret from Supabase → Settings → API (never the anon key).
 services:
   - type: web
     name: deepresearch-backend
