@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { config } from './config';
+import { supabase } from './supabaseClient';
 import Header from './Header';
 import {
   DndContext,
@@ -22,6 +23,13 @@ import {
 } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+
+async function dashboardAccessToken() {
+  if (!supabase) return null;
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session?.access_token) return null;
+  return session.access_token;
+}
 
 // Draggable Research Card Component
 const DraggableResearchCard = ({ conversation, onOpen, onDelete }) => {
@@ -300,7 +308,7 @@ const Dashboard = () => {
     is_admin: false,
   });
 
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
 
   const isAdminUser = Boolean(usage.is_admin);
@@ -321,12 +329,16 @@ const Dashboard = () => {
     '#8B5CF6', '#06B6D4', '#84CC16', '#F97316'
   ];
 
-  const fetchFolders = useCallback(async () => {
+  const fetchFolders = useCallback(async (presetAccessToken = null) => {
     try {
+      const accessToken =
+        presetAccessToken ?? (await dashboardAccessToken());
+      if (!accessToken) return;
+
       const response = await fetch(config.endpoints.folders, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setFolders(data);
@@ -335,47 +347,54 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching folders:', error);
     }
-  }, [token]);
+  }, []);
 
-  const fetchConversations = useCallback(async (folderId = null) => {
+  const fetchConversations = useCallback(async (folderId = null, presetAccessToken = null) => {
     try {
-      const url = folderId 
+      const accessToken =
+        presetAccessToken ?? (await dashboardAccessToken());
+      if (!accessToken) return;
+
+      const url = folderId
         ? `${config.endpoints.conversations}?folder_id=${folderId}`
         : config.endpoints.conversations;
-      
+
       const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setConversations(data);
-        
+
         // If no folder is selected, this is the complete data set
         if (!folderId) {
           setAllConversations(data);
-          
+
           // Calculate stats for all conversations
           const totalReports = data.length;
           const oneWeekAgo = new Date();
           oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-          const thisWeek = data.filter(conv => 
-            new Date(conv.created_at) > oneWeekAgo
+          const thisWeek = data.filter(conv =>
+            new Date(conv.created_at) > oneWeekAgo,
           ).length;
-          
+
           setStats(prev => ({ ...prev, totalReports, thisWeek }));
         }
-        // If a folder is selected, we only update the current view but keep total stats
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
     }
-  }, [token]);
+  }, []);
 
-  const fetchUsage = useCallback(async () => {
+  const fetchUsage = useCallback(async (presetAccessToken = null) => {
     try {
+      const accessToken =
+        presetAccessToken ?? (await dashboardAccessToken());
+      if (!accessToken) return;
+
       const response = await fetch(config.endpoints.usage, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (response.ok) {
         const data = await response.json();
@@ -384,12 +403,18 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Error fetching usage:', error);
     }
-  }, [token]);
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      await Promise.all([fetchFolders(), fetchConversations(), fetchUsage()]);
+      const accessToken = await dashboardAccessToken();
+      if (!accessToken) return;
+      await Promise.all([
+        fetchFolders(accessToken),
+        fetchConversations(null, accessToken),
+        fetchUsage(accessToken),
+      ]);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -398,20 +423,22 @@ const Dashboard = () => {
   }, [fetchFolders, fetchConversations, fetchUsage]);
 
   useEffect(() => {
-    if (token) {
-      fetchData();
-    }
-  }, [token, fetchData]);
+    if (!user) return;
+    fetchData();
+  }, [user, token, fetchData]);
 
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
-    
+
     try {
+      const accessToken = await dashboardAccessToken();
+      if (!accessToken) return;
+
       const response = await fetch(`${config.API_BASE_URL}/folders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           name: newFolderName,
@@ -432,13 +459,16 @@ const Dashboard = () => {
 
   const updateFolder = async () => {
     if (!editFolderName.trim() || !editFolderData) return;
-    
+
     try {
+      const accessToken = await dashboardAccessToken();
+      if (!accessToken) return;
+
       const response = await fetch(`${config.API_BASE_URL}/folders/${editFolderData.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           name: editFolderName,
@@ -480,11 +510,14 @@ const Dashboard = () => {
 
   const moveConversationToFolder = async (conversationId, folderId) => {
     try {
+      const accessToken = await dashboardAccessToken();
+      if (!accessToken) return false;
+
       const response = await fetch(`${config.API_BASE_URL}/conversations/move`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           conversation_id: conversationId,
@@ -506,11 +539,14 @@ const Dashboard = () => {
 
   const reorderFolders = async (newOrder) => {
     try {
+      const accessToken = await dashboardAccessToken();
+      if (!accessToken) return false;
+
       const response = await fetch(`${config.API_BASE_URL}/folders/reorder`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           folder_ids: newOrder
@@ -553,10 +589,13 @@ const Dashboard = () => {
     if (!itemToDelete) return;
 
     try {
+      const accessToken = await dashboardAccessToken();
+      if (!accessToken) return;
+
       if (deleteType === 'conversation') {
         const response = await fetch(`${config.API_BASE_URL}/conversations/${itemToDelete.id}`, {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
 
         if (response.ok) {
@@ -572,7 +611,7 @@ const Dashboard = () => {
       } else if (deleteType === 'folder') {
         const response = await fetch(`${config.API_BASE_URL}/folders/${itemToDelete.id}?delete_conversations=${deleteAllResearch}`, {
           method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
 
         if (response.ok) {
