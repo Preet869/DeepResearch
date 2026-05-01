@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 import { config } from './config';
 import { apiFetch, getSupabaseAccessToken, AUTH_REQUIRED } from './apiClient';
 import Header from './Header';
+import analyticsService from './services/analyticsService';
 import {
   DndContext,
   DragOverlay,
@@ -303,6 +304,7 @@ const Dashboard = () => {
 
   const { token, user } = useAuth();
   const navigate = useNavigate();
+  const [dashboardStartTime] = useState(Date.now());
 
   const isAdminUser = Boolean(usage.is_admin);
   const limitReached =
@@ -413,8 +415,27 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!user) return;
+    
+    // Track dashboard page view
+    analyticsService.trackPageView('dashboard', {
+      user_has_folders: folders.length > 0,
+      user_has_conversations: conversations.length > 0,
+      is_admin: isAdminUser
+    });
+    
     fetchData();
-  }, [user, token, fetchData]);
+
+    // Cleanup function to track dashboard exit
+    return () => {
+      analyticsService.track('dashboard_exit', {
+        time_on_dashboard_ms: Date.now() - dashboardStartTime,
+        folders_count: folders.length,
+        conversations_count: conversations.length,
+        search_performed: searchQuery.length > 0,
+        selected_folder: selectedFolder?.name || 'all'
+      });
+    };
+  }, [user, token, fetchData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
@@ -432,6 +453,13 @@ const Dashboard = () => {
       });
       
       if (response.ok) {
+        // Track folder creation
+        analyticsService.track('folder_created', {
+          folder_name: newFolderName,
+          folder_color: newFolderColor,
+          total_folders_before: folders.length
+        });
+
         setNewFolderName('');
         setNewFolderColor('#3B82F6');
         setShowNewFolderModal(false);
@@ -439,6 +467,9 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error('Error creating folder:', error);
+      analyticsService.trackError('folder_create_failed', error.message, error.stack, {
+        folder_name: newFolderName
+      });
     }
   };
 
@@ -458,6 +489,17 @@ const Dashboard = () => {
       });
       
       if (response.ok) {
+        // Track successful folder update
+        analyticsService.track('folder_updated', {
+          folder_id: editFolderData.id,
+          old_name: editFolderData.name,
+          new_name: editFolderName,
+          old_color: editFolderData.color,
+          new_color: editFolderColor,
+          name_changed: editFolderData.name !== editFolderName,
+          color_changed: editFolderData.color !== editFolderColor
+        });
+        
         setEditFolderName('');
         setEditFolderColor('#3B82F6');
         setEditFolderData(null);
@@ -481,6 +523,15 @@ const Dashboard = () => {
 
   const selectFolder = (folder) => {
     setSelectedFolder(folder);
+    
+    // Track folder selection
+    analyticsService.track('folder_selected', {
+      folder_name: folder?.name || 'all_research',
+      folder_id: folder?.id || null,
+      previous_folder: selectedFolder?.name || 'all_research',
+      conversations_in_folder: folder?.conversation_count || allConversations.length
+    });
+    
     if (folder === null) {
       // When selecting "All Research", show all conversations
       setConversations(allConversations);
@@ -490,6 +541,9 @@ const Dashboard = () => {
   };
 
   const moveConversationToFolder = async (conversationId, folderId) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    const targetFolder = folders.find(f => f.id === folderId);
+    
     try {
       const response = await apiFetch(`${config.API_BASE_URL}/conversations/move`, {
         method: 'POST',
@@ -503,6 +557,16 @@ const Dashboard = () => {
       });
 
       if (response.ok) {
+        // Track conversation move
+        analyticsService.track('conversation_moved', {
+          conversation_id: conversationId,
+          conversation_title: conversation?.title,
+          from_folder: conversation?.folder_id || 'all_research',
+          to_folder: folderId || 'all_research',
+          to_folder_name: targetFolder?.name || 'All Research',
+          move_method: 'drag_drop'
+        });
+
         // Refresh data to reflect the move
         await fetchData();
         return true;
@@ -510,6 +574,10 @@ const Dashboard = () => {
       return false;
     } catch (error) {
       console.error('Error moving conversation:', error);
+      analyticsService.trackError('conversation_move_failed', error.message, error.stack, {
+        conversation_id: conversationId,
+        target_folder_id: folderId
+      });
       return false;
     }
   };
@@ -540,18 +608,39 @@ const Dashboard = () => {
   };
 
   const handleDeleteConversation = (conversation) => {
+    // Track delete initiation
+    analyticsService.track('delete_conversation_initiated', {
+      conversation_id: conversation.id,
+      conversation_title: conversation.title,
+      conversation_folder: conversation.folder_id || 'all_research'
+    });
+    
     setItemToDelete(conversation);
     setDeleteType('conversation');
     setShowDeleteModal(true);
   };
 
   const handleDeleteFolder = (folder) => {
+    // Track folder delete initiation
+    analyticsService.track('delete_folder_initiated', {
+      folder_id: folder.id,
+      folder_name: folder.name,
+      conversations_in_folder: folder.conversation_count
+    });
+    
     setItemToDelete(folder);
     setDeleteType('folder');
     setShowDeleteModal(true);
   };
 
   const handleEditFolder = (folder) => {
+    // Track folder edit initiation
+    analyticsService.track('edit_folder_initiated', {
+      folder_id: folder.id,
+      folder_name: folder.name,
+      folder_color: folder.color
+    });
+    
     setEditFolderData(folder);
     setEditFolderName(folder.name);
     setEditFolderColor(folder.color);
@@ -569,6 +658,14 @@ const Dashboard = () => {
 
         if (response.ok) {
           const data = await response.json();
+          
+          // Track successful conversation deletion
+          analyticsService.track('conversation_deleted', {
+            conversation_id: itemToDelete.id,
+            conversation_title: itemToDelete.title,
+            folder_name: selectedFolder?.name || 'all_research'
+          });
+          
           setNotification({
             type: 'success',
             message: data.message
@@ -584,6 +681,15 @@ const Dashboard = () => {
 
         if (response.ok) {
           const data = await response.json();
+          
+          // Track successful folder deletion
+          analyticsService.track('folder_deleted', {
+            folder_id: itemToDelete.id,
+            folder_name: itemToDelete.name,
+            conversations_count: itemToDelete.conversation_count,
+            delete_conversations: deleteAllResearch
+          });
+          
           setNotification({
             type: 'success',
             message: data.message
@@ -618,6 +724,24 @@ const Dashboard = () => {
     // Check if we're dragging a folder
     const isFolderDrag = active.id.toString().startsWith('folder-');
     setIsDraggingFolder(isFolderDrag);
+    
+    // Track drag operation start
+    if (isFolderDrag) {
+      const folderId = parseInt(active.id.toString().replace('folder-', ''));
+      const folder = folders.find(f => f.id === folderId);
+      analyticsService.track('folder_drag_started', {
+        folder_id: folderId,
+        folder_name: folder?.name,
+        total_folders: folders.length
+      });
+    } else {
+      const conversation = conversations.find(c => c.id === active.id);
+      analyticsService.track('conversation_drag_started', {
+        conversation_id: active.id,
+        conversation_title: conversation?.title,
+        current_folder: conversation?.folder_id || 'all_research'
+      });
+    }
   };
 
   const handleDragOver = (event) => {
@@ -659,6 +783,14 @@ const Dashboard = () => {
         const success = await reorderFolders(newOrder);
         
         if (success) {
+          // Track successful folder reordering
+          analyticsService.track('folders_reordered', {
+            folder_count: folders.length,
+            moved_folder_id: activeFolderId,
+            new_position: newIndex,
+            old_position: oldIndex
+          });
+          
           setNotification({
             type: 'success',
             message: 'Folders reordered successfully'
@@ -667,6 +799,9 @@ const Dashboard = () => {
         } else {
           // Revert on failure
           await fetchFolders();
+          analyticsService.trackError('folder_reorder_failed', 'API request failed', null, {
+            folder_id: activeFolderId
+          });
           setNotification({
             type: 'error',
             message: 'Failed to reorder folders'
@@ -721,10 +856,31 @@ const Dashboard = () => {
     if (selectedFolder) {
       params.set('folder_id', selectedFolder.id);
     }
+    
+    // Track new research initiation
+    analyticsService.trackButtonClick('start_new_research', 'dashboard', {
+      selected_folder: selectedFolder?.name || 'all_research',
+      total_conversations: conversations.length,
+      usage_status: {
+        reports_used: usage.reports_used,
+        reports_limit: usage.reports_limit,
+        is_admin: isAdminUser
+      }
+    });
+    
     navigate(`/research?${params.toString()}`);
   };
 
   const openConversation = (conversation) => {
+    // Track conversation open from dashboard
+    analyticsService.trackContentInteraction('conversation', 'opened_from_dashboard', {
+      conversation_id: conversation.id,
+      conversation_title: conversation.title,
+      conversation_created: conversation.created_at,
+      folder_name: selectedFolder?.name || 'all_research',
+      open_method: 'card_click'
+    });
+    
     navigate(`/research?convo_id=${conversation.id}`);
   };
 
@@ -945,7 +1101,20 @@ const Dashboard = () => {
                   type="text"
                   placeholder="Search research reports..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setSearchQuery(newValue);
+                    
+                    // Track search behavior on dashboard
+                    if (newValue.length > 2) {
+                      analyticsService.track('dashboard_search', {
+                        query: newValue,
+                        query_length: newValue.length,
+                        selected_folder: selectedFolder?.name || 'all_research',
+                        total_conversations: conversations.length
+                      });
+                    }
+                  }}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../AuthContext';
+import analyticsService from '../services/analyticsService';
 
 const LIBRARY_TABLE = 'research_library_items';
 const LOCAL_STORAGE_KEY = 'researchLibrary';
@@ -47,6 +48,28 @@ const ResearchLibrary = ({ onClose }) => {
   const [newItem, setNewItem] = useState(emptyFormState);
   const [libraryLoading, setLibraryLoading] = useState(useCloud);
   const [loadError, setLoadError] = useState(null);
+  const [componentStartTime] = useState(Date.now());
+
+  // Track component mount
+  useEffect(() => {
+    analyticsService.trackFeatureUsage('research_library', 'opened', {
+      user_has_cloud: useCloud,
+      library_size: library.length
+    });
+
+    // Cleanup function to track component unmount
+    return () => {
+      analyticsService.trackFeatureUsage('research_library', 'closed', {
+        session_duration_ms: Date.now() - componentStartTime,
+        final_library_size: library.length,
+        actions_performed: {
+          had_search: searchTerm.length > 0,
+          used_category_filter: filterCategory !== 'all',
+          opened_add_form: showAddForm
+        }
+      });
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const categories = [
     { id: 'all', name: 'All Items', icon: '📚' },
@@ -116,6 +139,8 @@ const ResearchLibrary = ({ onClose }) => {
     const loadFromSupabase = async () => {
       setLibraryLoading(true);
       setLoadError(null);
+      const startTime = Date.now();
+      
       try {
         const { data, error } = await supabase
           .from(LIBRARY_TABLE)
@@ -132,11 +157,21 @@ const ResearchLibrary = ({ onClose }) => {
             if (migrated.length > 0) items = migrated;
           } catch (migrateErr) {
             console.error('Research library migration failed:', migrateErr);
+            analyticsService.trackError('library_migration_failed', migrateErr.message);
           }
         }
         setLibrary(items);
+        
+        // Track successful library load
+        analyticsService.trackLibraryAction('library_loaded', {
+          items_count: items.length,
+          load_time_ms: Date.now() - startTime,
+          source: 'supabase'
+        });
+        
       } catch (e) {
         console.error('Research library load failed:', e);
+        analyticsService.trackError('library_load_failed', e.message, e.stack);
         if (!cancelled) {
           setLoadError(
             'Could not load your library from the server. If this is a new setup, run the Supabase migration for research_library_items.'
@@ -172,6 +207,7 @@ const ResearchLibrary = ({ onClose }) => {
 
     const tags = tagsToArray(newItem.tags);
     const isUpdate = newItem.id != null && newItem.id !== '';
+    const startTime = Date.now();
 
     if (useCloud) {
       try {
@@ -194,6 +230,17 @@ const ResearchLibrary = ({ onClose }) => {
           if (error) throw error;
           const updated = rowToItem(data);
           setLibrary((prev) => prev.map((item) => (sameId(item.id, updated.id) ? updated : item)));
+          
+          // Track update
+          analyticsService.trackLibraryAction('item_updated', {
+            id: updated.id,
+            category: updated.category,
+            tags: updated.tags,
+            has_url: !!updated.url,
+            has_description: !!updated.description,
+            has_notes: !!updated.notes,
+            operation_time_ms: Date.now() - startTime
+          });
         } else {
           const { data, error } = await supabase
             .from(LIBRARY_TABLE)
@@ -209,10 +256,27 @@ const ResearchLibrary = ({ onClose }) => {
             .select()
             .single();
           if (error) throw error;
-          setLibrary((prev) => [rowToItem(data), ...prev]);
+          const newLibraryItem = rowToItem(data);
+          setLibrary((prev) => [newLibraryItem, ...prev]);
+          
+          // Track addition
+          analyticsService.trackLibraryAction('item_added', {
+            id: newLibraryItem.id,
+            category: newLibraryItem.category,
+            tags: newLibraryItem.tags,
+            has_url: !!newLibraryItem.url,
+            has_description: !!newLibraryItem.description,
+            has_notes: !!newLibraryItem.notes,
+            tag_count: tags.length,
+            operation_time_ms: Date.now() - startTime
+          });
         }
       } catch (e) {
         console.error('Research library save failed:', e);
+        analyticsService.trackError('library_save_failed', e.message, e.stack, {
+          action: isUpdate ? 'update' : 'add',
+          item_category: newItem.category
+        });
         return;
       }
     } else if (isUpdate) {
@@ -232,6 +296,13 @@ const ResearchLibrary = ({ onClose }) => {
             : item
         )
       );
+      
+      analyticsService.trackLibraryAction('item_updated', {
+        id: newItem.id,
+        category: newItem.category,
+        tags,
+        source: 'local_storage'
+      });
     } else {
       const item = {
         id: Date.now(),
@@ -245,6 +316,14 @@ const ResearchLibrary = ({ onClose }) => {
         lastAccessed: new Date().toISOString()
       };
       setLibrary((prev) => [...prev, item]);
+      
+      analyticsService.trackLibraryAction('item_added', {
+        id: item.id,
+        category: item.category,
+        tags,
+        source: 'local_storage',
+        tag_count: tags.length
+      });
     }
 
     setNewItem(emptyFormState());
@@ -252,14 +331,31 @@ const ResearchLibrary = ({ onClose }) => {
   };
 
   const handleDeleteItem = async (id) => {
+    const itemToDelete = library.find((item) => sameId(item.id, id));
+    
     if (useCloud) {
       try {
         const { error } = await supabase.from(LIBRARY_TABLE).delete().eq('id', id);
         if (error) throw error;
+        
+        // Track deletion
+        analyticsService.trackLibraryAction('item_deleted', {
+          id,
+          category: itemToDelete?.category,
+          had_url: !!itemToDelete?.url,
+          tag_count: itemToDelete?.tags?.length || 0
+        });
       } catch (e) {
         console.error('Research library delete failed:', e);
+        analyticsService.trackError('library_delete_failed', e.message, e.stack, { item_id: id });
         return;
       }
+    } else {
+      analyticsService.trackLibraryAction('item_deleted', {
+        id,
+        category: itemToDelete?.category,
+        source: 'local_storage'
+      });
     }
     setLibrary((prev) => prev.filter((item) => !sameId(item.id, id)));
   };
@@ -277,6 +373,8 @@ const ResearchLibrary = ({ onClose }) => {
 
   const handleAccessItem = async (id) => {
     const now = new Date().toISOString();
+    const item = library.find((item) => sameId(item.id, id));
+    
     if (useCloud) {
       try {
         const { error } = await supabase
@@ -289,6 +387,15 @@ const ResearchLibrary = ({ onClose }) => {
         return;
       }
     }
+    
+    // Track item access
+    analyticsService.trackLibraryAction('item_accessed', {
+      id,
+      category: item?.category,
+      has_url: !!item?.url,
+      access_method: 'library_open'
+    });
+    
     setLibrary((prev) =>
       prev.map((item) => (sameId(item.id, id) ? { ...item, lastAccessed: now } : item))
     );
@@ -337,12 +444,18 @@ const ResearchLibrary = ({ onClose }) => {
     }
   };
 
-  const copyUrl = async (url) => {
+  const copyUrl = async (url, itemId) => {
     if (url) {
       try {
         await navigator.clipboard.writeText(url);
+        // Track URL copy action
+        analyticsService.trackLibraryAction('url_copied', {
+          item_id: itemId,
+          url_domain: new URL(url).hostname
+        });
       } catch (error) {
         console.error('Failed to copy URL:', error);
+        analyticsService.trackError('clipboard_copy_failed', error.message);
       }
     }
   };
@@ -382,7 +495,14 @@ const ResearchLibrary = ({ onClose }) => {
                 {categories.map((category) => (
                   <button
                     key={category.id}
-                    onClick={() => setFilterCategory(category.id)}
+                    onClick={() => {
+                      setFilterCategory(category.id);
+                      // Track category filter usage
+                      analyticsService.trackLibraryAction('category_filtered', {
+                        category: category.id,
+                        previous_category: filterCategory
+                      });
+                    }}
                     className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                       filterCategory === category.id
                         ? 'bg-blue-100 text-blue-700'
@@ -403,7 +523,20 @@ const ResearchLibrary = ({ onClose }) => {
                 <input
                   type="text"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setSearchTerm(newValue);
+                    
+                    // Track search behavior
+                    if (newValue.length > 2) {
+                      analyticsService.trackLibraryAction('search_performed', {
+                        query: newValue,
+                        query_length: newValue.length,
+                        current_category: filterCategory,
+                        total_items: library.length
+                      });
+                    }
+                  }}
                   placeholder="Search by title, description, or tags..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -412,6 +545,11 @@ const ResearchLibrary = ({ onClose }) => {
                 onClick={() => {
                   setNewItem(emptyFormState());
                   setShowAddForm(true);
+                  // Track when user initiates adding new item
+                  analyticsService.trackLibraryAction('add_form_opened', {
+                    current_items_count: library.length,
+                    current_category_filter: filterCategory
+                  });
                 }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
@@ -590,7 +728,7 @@ const ResearchLibrary = ({ onClose }) => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => copyUrl(item.url)}
+                              onClick={() => copyUrl(item.url, item.id)}
                               className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm"
                             >
                               Copy URL

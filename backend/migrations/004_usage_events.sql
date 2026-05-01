@@ -19,9 +19,12 @@ ALTER TABLE public.usage_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own usage events" ON public.usage_events
     FOR SELECT USING (auth.uid() = user_id);
 
+CREATE POLICY "Users can insert their own usage events" ON public.usage_events
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
 CREATE POLICY "Service role can manage all usage events" ON public.usage_events
     FOR ALL USING (auth.role() = 'service_role');
 
 -- Grant permissions
-GRANT SELECT ON public.usage_events TO authenticated;
+GRANT SELECT, INSERT ON public.usage_events TO authenticated;
 GRANT ALL ON public.usage_events TO service_role;

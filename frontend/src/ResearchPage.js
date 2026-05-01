@@ -8,6 +8,7 @@ import Analytics from './components/Analytics';
 import ResearchLibrary from './components/ResearchLibrary';
 import { config } from './config';
 import { apiFetch, AUTH_REQUIRED } from './apiClient';
+import analyticsService from './services/analyticsService';
 
 const ResearchPage = () => {
   const [messages, setMessages] = useState([]);
@@ -27,11 +28,14 @@ const ResearchPage = () => {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showResearchLibrary, setShowResearchLibrary] = useState(false);
   const dropdownRef = useRef(null);
+  const [pageStartTime] = useState(Date.now());
+  const [lastActivityTime, setLastActivityTime] = useState(Date.now());
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const loadConversation = useCallback(async (convoId) => {
+    const startTime = Date.now();
     try {
       const response = await apiFetch(config.endpoints.messages(convoId));
       
@@ -44,10 +48,21 @@ const ResearchPage = () => {
         if (firstUserMessage) {
           setConversationTitle(firstUserMessage.content.slice(0, 50) + '...');
         }
+
+        // Track conversation load
+        analyticsService.track('conversation_loaded', {
+          conversation_id: convoId,
+          messages_count: data.length,
+          load_time_ms: Date.now() - startTime,
+          has_title: !!firstUserMessage
+        });
       }
     } catch (error) {
       if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
         console.error('Error loading conversation:', error);
+        analyticsService.trackError('conversation_load_failed', error.message, error.stack, {
+          conversation_id: convoId
+        });
       }
     }
   }, []);
@@ -55,6 +70,13 @@ const ResearchPage = () => {
   useEffect(() => {
     const convoId = searchParams.get('convo_id');
     const folderIdParam = searchParams.get('folder_id');
+    
+    // Track page view
+    analyticsService.trackPageView('research_page', {
+      has_conversation_id: !!convoId,
+      has_folder_id: !!folderIdParam,
+      is_new_research: !convoId
+    });
     
     if (convoId) {
       setConversationId(parseInt(convoId));
@@ -64,7 +86,22 @@ const ResearchPage = () => {
     if (folderIdParam) {
       setFolderId(parseInt(folderIdParam));
     }
-  }, [searchParams, loadConversation]);
+
+    // Cleanup function to track page exit
+    return () => {
+      analyticsService.track('research_page_exit', {
+        time_on_page_ms: Date.now() - pageStartTime,
+        conversation_id: conversationId,
+        messages_sent: messages.filter(m => m.role === 'user').length,
+        tools_used: {
+          export_manager: showExportManager,
+          citation_helper: showCitationHelper,
+          analytics: showAnalytics,
+          research_library: showResearchLibrary
+        }
+      });
+    };
+  }, [searchParams, loadConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -94,16 +131,27 @@ const ResearchPage = () => {
     e.preventDefault();
     if (!inputValue.trim() || loading) return;
 
-    setLoading(true);
-    const userMessage = { role: 'user', content: inputValue.trim() };
-    setMessages(prev => [...prev, userMessage]);
+    const startTime = Date.now();
+    const queryText = inputValue.trim();
+    const isNewResearch = !conversationId;
     
-    const currentInput = inputValue.trim();
+    setLoading(true);
+    const userMessage = { role: 'user', content: queryText };
+    setMessages(prev => [...prev, userMessage]);
+    setLastActivityTime(Date.now());
+    
+    // Track research initiation
+    if (isNewResearch) {
+      analyticsService.trackResearchStart(null, queryText, folderId);
+    } else {
+      analyticsService.trackSearch(queryText, { folder_id: folderId }, 'research_followup');
+    }
+    
     setInputValue('');
 
     try {
       const requestBody = {
-        prompt: currentInput,
+        prompt: queryText,
         conversation_id: conversationId || undefined,
         folder_id: folderId || undefined
       };
@@ -118,6 +166,7 @@ const ResearchPage = () => {
 
       if (response.ok) {
         const data = await response.json();
+        const processingTime = Date.now() - startTime;
         
         if (!conversationId) {
           setConversationId(data.conversation_id);
@@ -125,16 +174,33 @@ const ResearchPage = () => {
           const newSearchParams = new URLSearchParams(searchParams);
           newSearchParams.set('convo_id', data.conversation_id);
           navigate(`/research?${newSearchParams.toString()}`, { replace: true });
+          
+          // Update the research started event with the actual conversation ID
+          analyticsService.trackResearchStart(data.conversation_id, queryText, folderId);
         }
         
         if (data.new_messages && data.new_messages.length > 0) {
           setMessages(prev => [...prev, ...data.new_messages]);
+          
+          // Track successful research response
+          analyticsService.trackSearchResults(
+            queryText,
+            data.new_messages.length,
+            processingTime,
+            data.sources || []
+          );
         }
       } else {
         throw new Error('Failed to get response');
       }
     } catch (error) {
       console.error('Error:', error);
+      analyticsService.trackError('research_request_failed', error.message, error.stack, {
+        query: queryText,
+        conversation_id: conversationId,
+        is_new_research: isNewResearch
+      });
+      
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: 'Sorry, there was an error processing your request. Please try again.',
@@ -159,6 +225,14 @@ const ResearchPage = () => {
 
       if (response.ok) {
         const data = await response.json();
+        
+        // Track research deletion
+        analyticsService.track('research_deleted', {
+          conversation_id: conversationId,
+          messages_count: messages.length,
+          session_duration_ms: Date.now() - pageStartTime
+        });
+        
         // Show success message briefly before navigating
         alert(data.message);
         navigate('/dashboard');
@@ -167,6 +241,9 @@ const ResearchPage = () => {
       }
     } catch (error) {
       console.error('Error deleting research:', error);
+      analyticsService.trackError('research_delete_failed', error.message, error.stack, {
+        conversation_id: conversationId
+      });
       alert('Failed to delete research. Please try again.');
     } finally {
       setShowDeleteModal(false);
@@ -176,6 +253,13 @@ const ResearchPage = () => {
   // Timeline handlers
   const handleNodeSelect = (nodeIndex) => {
     setActiveNodeIndex(nodeIndex);
+    
+    // Track timeline navigation
+    analyticsService.trackContentInteraction('timeline_node', 'selected', {
+      node_index: nodeIndex,
+      conversation_id: conversationId,
+      total_nodes: messages.filter(m => m.role === 'user').length
+    });
   };
 
   const handleAddFollowup = (query) => {
@@ -299,6 +383,13 @@ const ResearchPage = () => {
     
     const mainReport = messages.filter(m => m.role === 'assistant')[0];
     if (!mainReport) return;
+
+    // Track PDF export
+    analyticsService.trackDocumentExport(conversationId, 'pdf', 'research_report', {
+      conversation_id: conversationId,
+      content_length: mainReport.content.length,
+      total_messages: messages.length
+    });
 
     // Create a new window with print-friendly content
     const printWindow = window.open('', '_blank');
@@ -481,7 +572,14 @@ const ResearchPage = () => {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Research Tools</h3>
                 <div className="space-y-3">
                   <button 
-                    onClick={() => setShowExportManager(true)}
+                    onClick={() => {
+                      setShowExportManager(true);
+                      analyticsService.trackFeatureUsage('export_manager', 'opened', {
+                        conversation_id: conversationId,
+                        messages_count: messages.length,
+                        selections_count: Object.values(exportSelections).filter(Boolean).length
+                      });
+                    }}
                     className="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center">
@@ -498,7 +596,13 @@ const ResearchPage = () => {
                   </button>
                   
                   <button 
-                    onClick={() => setShowCitationHelper(true)}
+                    onClick={() => {
+                      setShowCitationHelper(true);
+                      analyticsService.trackFeatureUsage('citation_helper', 'opened', {
+                        conversation_id: conversationId,
+                        messages_count: messages.length
+                      });
+                    }}
                     className="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center">
@@ -510,7 +614,13 @@ const ResearchPage = () => {
                   </button>
                   
                   <button 
-                    onClick={() => setShowAnalytics(true)}
+                    onClick={() => {
+                      setShowAnalytics(true);
+                      analyticsService.trackFeatureUsage('analytics', 'opened', {
+                        conversation_id: conversationId,
+                        messages_count: messages.length
+                      });
+                    }}
                     className="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center">
@@ -522,7 +632,13 @@ const ResearchPage = () => {
                   </button>
                   
                   <button 
-                    onClick={() => setShowResearchLibrary(true)}
+                    onClick={() => {
+                      setShowResearchLibrary(true);
+                      analyticsService.trackFeatureUsage('research_library', 'opened', {
+                        conversation_id: conversationId,
+                        messages_count: messages.length
+                      });
+                    }}
                     className="w-full p-3 text-left rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center">
@@ -582,7 +698,13 @@ const ResearchPage = () => {
                         ].map((example, index) => (
                           <button
                             key={index}
-                            onClick={() => setInputValue(example)}
+                            onClick={() => {
+                              setInputValue(example);
+                              analyticsService.trackButtonClick('example_query', 'welcome_section', {
+                                example_text: example,
+                                example_index: index
+                              });
+                            }}
                             className="p-4 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                           >
                             <div className="flex items-center">
