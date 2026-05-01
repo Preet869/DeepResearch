@@ -29,7 +29,6 @@ const ResearchPage = () => {
   const [showResearchLibrary, setShowResearchLibrary] = useState(false);
   const dropdownRef = useRef(null);
   const [pageStartTime] = useState(Date.now());
-  const [lastActivityTime, setLastActivityTime] = useState(Date.now());
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -138,7 +137,6 @@ const ResearchPage = () => {
     setLoading(true);
     const userMessage = { role: 'user', content: queryText };
     setMessages(prev => [...prev, userMessage]);
-    setLastActivityTime(Date.now());
     
     // Track research initiation
     if (isNewResearch) {
