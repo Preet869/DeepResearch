@@ -8,7 +8,7 @@ import asyncio
 import ipaddress
 from urllib.parse import urlparse
 from types import SimpleNamespace
-from typing import Annotated, List, Dict, Optional
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import httpx
 import jwt
@@ -20,6 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import anthropic
 from dotenv import load_dotenv
 from supabase import create_client
+from supabase.lib.client_options import SyncClientOptions
+import supabase.lib.client_options as supabase_client_options
 from tavily import TavilyClient
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -106,6 +108,35 @@ def _get_supabase_anon():
         _supabase_anon = create_client(url, anon)
         logger.info("Supabase anon client initialized (used for token validation fallback)")
     return _supabase_anon
+
+
+def _user_scoped_supabase(access_token: str):
+    """Supabase client that sends the user's access token to PostgREST (RLS sees ``auth.uid()``)."""
+    url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+    anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip()
+    if not url or not anon:
+        raise RuntimeError(
+            "SUPABASE_URL and SUPABASE_ANON_KEY are required for user-scoped database access"
+        )
+    h = {
+        **supabase_client_options.DEFAULT_HEADERS.copy(),
+        "Authorization": f"Bearer {access_token.strip()}",
+    }
+    opts = SyncClientOptions(headers=h)
+    return create_client(url, anon, opts)
+
+
+def _db_for_access_token(access_token: str) -> Any:
+    """Use service_role client when valid; otherwise anon key + user JWT (required if SERVICE_KEY is anon/wrong)."""
+    sk = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip()
+    role = _jwt_role_from_supabase_key(sk) if sk else None
+    if role == "service_role" and supabase is not None:
+        return supabase
+    url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+    anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip()
+    if url and anon and access_token:
+        return _user_scoped_supabase(access_token)
+    return supabase
 
 
 def initialize_clients():
@@ -293,8 +324,7 @@ def parse_bearer_token(authorization: Optional[str]) -> Optional[str]:
     return token or None
 
 
-async def require_authenticated_user(authorization: Optional[str]):
-    """Require a valid Supabase JWT; raise 401 if missing or invalid."""
+async def require_user_and_token(authorization: Optional[str]) -> Tuple[Any, str]:
     token = parse_bearer_token(authorization)
     if not token:
         raise HTTPException(
@@ -304,6 +334,12 @@ async def require_authenticated_user(authorization: Optional[str]):
     user = await get_user_from_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
+    return user, token
+
+
+async def require_authenticated_user(authorization: Optional[str]):
+    """Require a valid Supabase JWT; raise 401 if missing or invalid."""
+    user, _ = await require_user_and_token(authorization)
     return user
 
 
@@ -1126,14 +1162,16 @@ End with this JSON block:
 MONTHLY_REPORT_LIMIT = 5
 
 
-def _count_monthly_reports(user_id: str) -> int:
+def _count_monthly_reports(user_id: str, db: Any) -> int:
     """Count assistant messages produced for this user in the current calendar month."""
+    if not db:
+        return 0
     from datetime import date
     first_of_month = date.today().replace(day=1).isoformat()
     # Supabase Python client doesn't support cross-table joins, so we fetch
     # conversation IDs for the user first, then count matching messages.
     convos_res = (
-        supabase.table("conversations")
+        db.table("conversations")
         .select("id")
         .eq("user_id", user_id)
         .execute()
@@ -1142,7 +1180,7 @@ def _count_monthly_reports(user_id: str) -> int:
     if not convo_ids:
         return 0
     msg_res = (
-        supabase.table("messages")
+        db.table("messages")
         .select("id", count="exact")
         .eq("role", "assistant")
         .gte("created_at", first_of_month)
@@ -1152,13 +1190,13 @@ def _count_monthly_reports(user_id: str) -> int:
     return msg_res.count or 0
 
 
-def _profile_role(user_id: str) -> str:
+def _profile_role(user_id: str, db: Any) -> str:
     """Return app role from profiles; default ``user`` if missing or unreadable."""
-    if not supabase:
+    if not db:
         return "user"
     try:
         res = (
-            supabase.table("profiles")
+            db.table("profiles")
             .select("role")
             .eq("id", str(user_id))
             .limit(1)
@@ -1174,8 +1212,8 @@ def _profile_role(user_id: str) -> str:
         return "user"
 
 
-def _user_is_admin(user_id: str) -> bool:
-    return _profile_role(user_id) == "admin"
+def _user_is_admin(user_id: str, db: Any) -> bool:
+    return _profile_role(user_id, db) == "admin"
 
 
 def _insert_usage_event(user_id: Optional[str], event_type: str, metadata: Dict) -> None:
@@ -1281,13 +1319,16 @@ async def health_check():
 @app.get("/folders")
 async def get_folders(authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        folders_response = supabase.table("folders").select("*").eq("user_id", user.id).order("created_at", desc=False).execute()
+        folders_response = db.table("folders").select("*").eq("user_id", user.id).order("created_at", desc=False).execute()
 
         folders_with_counts = []
         for folder in folders_response.data:
-            count_response = supabase.table("conversations").select("id", count="exact").eq("user_id", user.id).eq("folder_id", folder["id"]).execute()
+            count_response = db.table("conversations").select("id", count="exact").eq("user_id", user.id).eq("folder_id", folder["id"]).execute()
             folders_with_counts.append({**folder, "conversation_count": count_response.count or 0})
 
         return folders_with_counts
@@ -1301,8 +1342,11 @@ async def get_folders(authorization: Annotated[Optional[str], Header()] = None):
 @app.post("/folders")
 async def create_folder(folder: FolderCreate, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
-        response = supabase.table("folders").insert({"user_id": user.id, "name": folder.name, "color": folder.color}).execute()
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
+        response = db.table("folders").insert({"user_id": user.id, "name": folder.name, "color": folder.color}).execute()
         return response.data[0]
     except HTTPException:
         raise
@@ -1314,9 +1358,12 @@ async def create_folder(folder: FolderCreate, authorization: Annotated[Optional[
 @app.put("/folders/{folder_id}")
 async def update_folder(folder_id: int, folder: FolderUpdate, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+        folder_check = db.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
         if not folder_check.data:
             raise HTTPException(status_code=404, detail="Folder not found or access denied")
 
@@ -1326,7 +1373,7 @@ async def update_folder(folder_id: int, folder: FolderUpdate, authorization: Ann
         if folder.color is not None:
             update_data["color"] = folder.color
 
-        response = supabase.table("folders").update(update_data).eq("id", folder_id).execute()
+        response = db.table("folders").update(update_data).eq("id", folder_id).execute()
         return response.data[0]
     except HTTPException:
         raise
@@ -1338,26 +1385,29 @@ async def update_folder(folder_id: int, folder: FolderUpdate, authorization: Ann
 @app.delete("/folders/{folder_id}")
 async def delete_folder(folder_id: int, delete_conversations: bool = False, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        folder_check = supabase.table("folders").select("id, name").eq("id", folder_id).eq("user_id", user.id).execute()
+        folder_check = db.table("folders").select("id, name").eq("id", folder_id).eq("user_id", user.id).execute()
         if not folder_check.data:
             raise HTTPException(status_code=404, detail="Folder not found or access denied")
 
         folder_name = folder_check.data[0]["name"]
-        conversations_res = supabase.table("conversations").select("id").eq("folder_id", folder_id).eq("user_id", user.id).execute()
+        conversations_res = db.table("conversations").select("id").eq("folder_id", folder_id).eq("user_id", user.id).execute()
         conversation_ids = [conv["id"] for conv in conversations_res.data]
 
         if delete_conversations:
             for conv_id in conversation_ids:
-                supabase.table("messages").delete().eq("conversation_id", conv_id).execute()
-                supabase.table("conversations").delete().eq("id", conv_id).execute()
+                db.table("messages").delete().eq("conversation_id", conv_id).execute()
+                db.table("conversations").delete().eq("id", conv_id).execute()
             message = f"Folder '{folder_name}' and all {len(conversation_ids)} research items deleted successfully"
         else:
-            supabase.table("conversations").update({"folder_id": None}).eq("folder_id", folder_id).eq("user_id", user.id).execute()
+            db.table("conversations").update({"folder_id": None}).eq("folder_id", folder_id).eq("user_id", user.id).execute()
             message = f"Folder '{folder_name}' deleted. {len(conversation_ids)} research items moved to uncategorized."
 
-        supabase.table("folders").delete().eq("id", folder_id).execute()
+        db.table("folders").delete().eq("id", folder_id).execute()
         return {"message": message}
     except HTTPException:
         raise
@@ -1369,10 +1419,13 @@ async def delete_folder(folder_id: int, delete_conversations: bool = False, auth
 @app.post("/folders/reorder")
 async def reorder_folders(reorder_data: FolderReorder, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
         for folder_id in reorder_data.folder_ids:
-            folder_check = supabase.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+            folder_check = db.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
             if not folder_check.data:
                 raise HTTPException(status_code=404, detail=f"Folder {folder_id} not found or access denied")
 
@@ -1380,7 +1433,7 @@ async def reorder_folders(reorder_data: FolderReorder, authorization: Annotated[
         base_time = datetime.now()
         for index, folder_id in enumerate(reorder_data.folder_ids):
             new_timestamp = base_time + timedelta(minutes=index)
-            supabase.table("folders").update({"created_at": new_timestamp.isoformat()}).eq("id", folder_id).execute()
+            db.table("folders").update({"created_at": new_timestamp.isoformat()}).eq("id", folder_id).execute()
 
         return {"message": "Folders reordered successfully"}
     except HTTPException:
@@ -1393,18 +1446,21 @@ async def reorder_folders(reorder_data: FolderReorder, authorization: Annotated[
 @app.post("/conversations/move")
 async def move_conversation(move_data: ConversationMove, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        convo_check = supabase.table("conversations").select("id").eq("id", move_data.conversation_id).eq("user_id", user.id).execute()
+        convo_check = db.table("conversations").select("id").eq("id", move_data.conversation_id).eq("user_id", user.id).execute()
         if not convo_check.data:
             raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
         if move_data.folder_id is not None:
-            folder_check = supabase.table("folders").select("id").eq("id", move_data.folder_id).eq("user_id", user.id).execute()
+            folder_check = db.table("folders").select("id").eq("id", move_data.folder_id).eq("user_id", user.id).execute()
             if not folder_check.data:
                 raise HTTPException(status_code=404, detail="Folder not found or access denied")
 
-        response = supabase.table("conversations").update({"folder_id": move_data.folder_id}).eq("id", move_data.conversation_id).execute()
+        response = db.table("conversations").update({"folder_id": move_data.folder_id}).eq("id", move_data.conversation_id).execute()
         return response.data[0]
     except HTTPException:
         raise
@@ -1416,9 +1472,12 @@ async def move_conversation(move_data: ConversationMove, authorization: Annotate
 @app.get("/conversations")
 async def get_conversations(folder_id: Optional[int] = None, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        query = supabase.table("conversations").select("id, title, created_at, folder_id").eq("user_id", user.id)
+        query = db.table("conversations").select("id, title, created_at, folder_id").eq("user_id", user.id)
         if folder_id is not None:
             query = query.eq("folder_id", folder_id)
         response = query.order("created_at", desc=True).execute()
@@ -1433,13 +1492,16 @@ async def get_conversations(folder_id: Optional[int] = None, authorization: Anno
 @app.get("/messages/{conversation_id}")
 async def get_messages(conversation_id: int, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        convo_res = supabase.table("conversations").select("id").eq("id", conversation_id).eq("user_id", user.id).execute()
+        convo_res = db.table("conversations").select("id").eq("id", conversation_id).eq("user_id", user.id).execute()
         if not convo_res.data:
             raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
-        messages_res = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=False).execute()
+        messages_res = db.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=False).execute()
         return messages_res.data
     except HTTPException:
         raise
@@ -1451,15 +1513,18 @@ async def get_messages(conversation_id: int, authorization: Annotated[Optional[s
 @app.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: int, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        convo_check = supabase.table("conversations").select("id, title").eq("id", conversation_id).eq("user_id", user.id).execute()
+        convo_check = db.table("conversations").select("id, title").eq("id", conversation_id).eq("user_id", user.id).execute()
         if not convo_check.data:
             raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
         conversation_title = convo_check.data[0]["title"]
-        supabase.table("messages").delete().eq("conversation_id", conversation_id).execute()
-        supabase.table("conversations").delete().eq("id", conversation_id).execute()
+        db.table("messages").delete().eq("conversation_id", conversation_id).execute()
+        db.table("conversations").delete().eq("id", conversation_id).execute()
         return {"message": f"Research '{conversation_title}' deleted successfully"}
     except HTTPException:
         raise
@@ -1475,10 +1540,13 @@ async def delete_conversation(conversation_id: int, authorization: Annotated[Opt
 async def get_usage(authorization: Annotated[Optional[str], Header()] = None):
     """Returns the user's report usage for the current calendar month."""
     try:
-        user = await require_authenticated_user(authorization)
-        reports_used = _count_monthly_reports(user.id)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
+        reports_used = _count_monthly_reports(user.id, db)
         uid = str(user.id)
-        if _user_is_admin(uid):
+        if _user_is_admin(uid, db):
             return {
                 "reports_used": reports_used,
                 "reports_limit": None,
@@ -1534,11 +1602,14 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
     """
     start = time.time()
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
         uid = str(user.id)
-        reports_used = _count_monthly_reports(user.id)
-        if not _user_is_admin(uid) and reports_used >= MONTHLY_REPORT_LIMIT:
+        reports_used = _count_monthly_reports(user.id, db)
+        if not _user_is_admin(uid, db) and reports_used >= MONTHLY_REPORT_LIMIT:
             from datetime import date
 
             _insert_usage_event(
@@ -1564,13 +1635,13 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
             conversation_data = {"user_id": user.id, "title": title}
             if body.folder_id:
                 conversation_data["folder_id"] = body.folder_id
-            convo_res = supabase.table("conversations").insert(conversation_data).execute()
+            convo_res = db.table("conversations").insert(conversation_data).execute()
             convo_id = convo_res.data[0]["id"]
         else:
-            convo_res = supabase.table("conversations").select("id").eq("id", convo_id).eq("user_id", user.id).execute()
+            convo_res = db.table("conversations").select("id").eq("id", convo_id).eq("user_id", user.id).execute()
             if not convo_res.data:
                 raise HTTPException(status_code=404, detail="Conversation not found or access denied")
-            messages_res = supabase.table("messages").select("role, content").eq("conversation_id", convo_id).order("created_at").execute()
+            messages_res = db.table("messages").select("role, content").eq("conversation_id", convo_id).order("created_at").execute()
             history = messages_res.data
             if history:
                 conversation_summary = await summarize_conversation(history)
@@ -1578,7 +1649,7 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
         had_conversation_history = len(history) > 0
 
         # Save user message
-        supabase.table("messages").insert({
+        db.table("messages").insert({
             "conversation_id": convo_id, "role": "user", "content": body.prompt
         }).execute()
 
@@ -1640,7 +1711,7 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
             "content": report_content,
             "metadata": metadata_json,
         }
-        message_res = supabase.table("messages").insert(message_to_save).execute()
+        message_res = db.table("messages").insert(message_to_save).execute()
 
         response_time_ms = (time.time() - start) * 1000
         _insert_usage_event(
@@ -1673,11 +1744,14 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
 @limiter.limit("10/hour")
 async def compare_articles(request: Request, body: ArticleComparisonRequest, authorization: Annotated[Optional[str], Header()] = None):
     try:
-        user = await require_authenticated_user(authorization)
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
 
         uid = str(user.id)
-        reports_used = _count_monthly_reports(user.id)
-        if not _user_is_admin(uid) and reports_used >= MONTHLY_REPORT_LIMIT:
+        reports_used = _count_monthly_reports(user.id, db)
+        if not _user_is_admin(uid, db) and reports_used >= MONTHLY_REPORT_LIMIT:
             from datetime import date
 
             _insert_usage_event(
@@ -1717,7 +1791,7 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         if body.folder_id:
             conversation_data["folder_id"] = body.folder_id
 
-        convo_res = supabase.table("conversations").insert(conversation_data).execute()
+        convo_res = db.table("conversations").insert(conversation_data).execute()
         convo_id = convo_res.data[0]["id"]
 
         user_message_content = f"Compare articles:\n\n**Article 1:** {article1.get('title', 'Article 1')}"
@@ -1731,7 +1805,7 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         if body.context:
             user_message_content += f"\n**Context:** {body.context}"
 
-        supabase.table("messages").insert({
+        db.table("messages").insert({
             "conversation_id": convo_id, "role": "user", "content": user_message_content
         }).execute()
 
@@ -1760,7 +1834,7 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
             "content": report_content,
             "metadata": metadata_json,
         }
-        message_res = supabase.table("messages").insert(message_to_save).execute()
+        message_res = db.table("messages").insert(message_to_save).execute()
 
         return {"conversation_id": convo_id, "new_messages": message_res.data}
 
