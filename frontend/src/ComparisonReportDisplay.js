@@ -258,6 +258,20 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
     }
   };
 
+  // Helper function to format follow-up queries with comparison context
+  const formatFollowUpQuery = (userQuery) => {
+    const article1Title = mainReport.metadata?.article1_title || 'Article 1';
+    const article2Title = mainReport.metadata?.article2_title || 'Article 2';
+    
+    const contextPrefix = `I just compared two articles:
+- Article 1: ${article1Title}
+- Article 2: ${article2Title}
+
+My question about this comparison: `;
+    
+    return contextPrefix + userQuery;
+  };
+
   const ComparisonSummaryCard = () => {
     if (!comparisonSummary) return null;
 
@@ -599,7 +613,7 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
               const contextPrompt = mainReport.metadata?.context 
                 ? `Based on the context "${mainReport.metadata.context}", generate a sample essay introduction paragraph that incorporates both articles from this comparison.`
                 : "Generate a sample essay introduction paragraph that incorporates both articles from this comparison.";
-              onFollowUp && onFollowUp(contextPrompt);
+              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
             }}
             className="p-4 bg-white rounded-lg border-2 border-green-300 hover:border-green-400 hover:bg-green-50 transition-colors text-left"
           >
@@ -615,7 +629,7 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
               const contextPrompt = mainReport.metadata?.context 
                 ? `Based on the context "${mainReport.metadata.context}" and this article comparison, generate 3 smart research questions that could guide further investigation.`
                 : "Based on this article comparison, generate 3 smart research questions that could guide further investigation.";
-              onFollowUp && onFollowUp(contextPrompt);
+              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
             }}
             className="p-4 bg-white rounded-lg border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
           >
@@ -631,7 +645,7 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
               const contextPrompt = mainReport.metadata?.context 
                 ? `Highlight and explain the matching concepts between both articles that are relevant to "${mainReport.metadata.context}".`
                 : "Highlight and explain the matching concepts and themes that appear in both articles.";
-              onFollowUp && onFollowUp(contextPrompt);
+              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
             }}
             className="p-4 bg-white rounded-lg border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-colors text-left"
           >
@@ -651,7 +665,7 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
               const contextPrompt = mainReport.metadata?.context 
                 ? `What are the practical implications of these article differences for "${mainReport.metadata.context}"?`
                 : "What are the practical implications of these differences?";
-              onFollowUp && onFollowUp(contextPrompt);
+              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
             }}
             className="p-3 text-left bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
           >
@@ -663,7 +677,7 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
               const contextPrompt = mainReport.metadata?.context 
                 ? `How should I cite both articles effectively for "${mainReport.metadata.context}"?`
                 : "How should I cite both articles effectively in my work?";
-              onFollowUp && onFollowUp(contextPrompt);
+              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
             }}
             className="p-3 text-left bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
           >
