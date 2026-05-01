@@ -16,6 +16,14 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
+const AdminRoute = ({ children }) => {
+  const { user, isAdmin } = useAuth();
+  if (!user) return <Navigate to="/login" />;
+  if (isAdmin === null) return null;
+  if (!isAdmin) return <Navigate to="/dashboard" />;
+  return children;
+};
+
 const ErrorFallback = () => (
   <div style={{ 
     padding: '20px', 
@@ -80,9 +88,9 @@ function App() {
           <Route 
             path="/compare" 
             element={
-              <ProtectedRoute>
+              <AdminRoute>
                 <ComparisonPage />
-              </ProtectedRoute>
+              </AdminRoute>
             } 
           />
         </Routes>

@@ -1728,22 +1728,11 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
         uid = _auth_uid(user)
-        reports_used = _count_monthly_reports(uid, db)
-        if not _user_is_admin(uid, db) and reports_used >= MONTHLY_REPORT_LIMIT:
-            from datetime import date
 
-            _insert_usage_event(
-                uid,
-                "limit_reached",
-                {"reports_used": MONTHLY_REPORT_LIMIT, "day_of_month": date.today().day},
-            )
+        if not _user_is_admin(uid, db):
             raise HTTPException(
-                status_code=429,
-                detail=(
-                    "You've reached the 5 report limit for our beta. "
-                    "We're limiting usage while we improve the platform. "
-                    "Check back next month for more free reports."
-                ),
+                status_code=403,
+                detail="Compare Articles is only available to admin users.",
             )
 
         if not ((body.article1_url or body.article1_text) and (body.article2_url or body.article2_text)):

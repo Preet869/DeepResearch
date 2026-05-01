@@ -13,6 +13,28 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  // null = not yet loaded, true = admin, false = regular user
+  const [isAdmin, setIsAdmin] = useState(null);
+
+  const fetchIsAdmin = async (accessToken) => {
+    if (!accessToken) {
+      setIsAdmin(false);
+      return;
+    }
+    try {
+      const res = await fetch(config.endpoints.usage, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsAdmin(Boolean(data.is_admin));
+      } else {
+        setIsAdmin(false);
+      }
+    } catch {
+      setIsAdmin(false);
+    }
+  };
 
   useEffect(() => {
     const getSession = async () => {
@@ -25,6 +47,7 @@ export const AuthProvider = ({ children }) => {
         const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
         setToken(session?.access_token ?? null);
+        await fetchIsAdmin(session?.access_token ?? null);
       } catch (error) {
         console.error('Error getting session:', error);
       } finally {
@@ -36,9 +59,10 @@ export const AuthProvider = ({ children }) => {
 
     if (supabase) {
       const { data: authListener } = supabase.auth.onAuthStateChange(
-        (event, session) => {
+        async (event, session) => {
           setUser(session?.user ?? null);
           setToken(session?.access_token ?? null);
+          await fetchIsAdmin(session?.access_token ?? null);
           setLoading(false);
         }
       );
@@ -47,7 +71,7 @@ export const AuthProvider = ({ children }) => {
         authListener.subscription.unsubscribe();
       };
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signUpWithBetaCap = async (data) => {
     if (!supabase) {
@@ -72,6 +96,7 @@ export const AuthProvider = ({ children }) => {
     signOut: () => supabase ? supabase.auth.signOut() : Promise.reject('Supabase not configured'),
     user,
     token,
+    isAdmin,
   };
 
   return (
