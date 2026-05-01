@@ -597,20 +597,41 @@ async def summarize_conversation(history: List[Dict[str, str]]) -> str:
 # ARTICLE EXTRACTION
 # =============================================================================
 async def extract_article_content(url: str) -> Dict[str, str]:
-    """Extracts article content from a URL using Tavily."""
+    """Extracts article content from a URL using Tavily extract, with search fallback."""
+    if not tavily_client:
+        logger.warning("Article extraction skipped for %s: Tavily not configured", url)
+        return {"title": "", "content": "", "url": url}
     try:
-        response = tavily_client.search(query=url, search_depth="basic", max_results=1)
+        response = tavily_client.extract(urls=[url])
+        if response and response.get("results"):
+            result = response["results"][0]
+            return {
+                "title": result.get("title", ""),
+                "content": (
+                    result.get("raw_content", result.get("content", ""))[:6000]
+                ),
+                "url": url,
+            }
+    except Exception:
+        pass
+
+    try:
+        response = tavily_client.search(
+            query=url,
+            search_depth="advanced",
+            max_results=1,
+        )
         if response["results"]:
             result = response["results"][0]
             return {
                 "title": result.get("title", ""),
-                "content": result.get("content", ""),
+                "content": result.get("content", "")[:6000],
                 "url": result.get("url", url),
             }
-        return {"title": "", "content": "", "url": url}
     except Exception as e:
         logger.error("Article extraction failed for %s: %s", url, e)
-        return {"title": "", "content": "", "url": url}
+
+    return {"title": "", "content": "", "url": url}
 
 
 # =============================================================================
@@ -879,15 +900,17 @@ async def generate_article_comparison_report(
     system = f"""You are an academic writing assistant helping students compare research articles.
 {focus_instruction}{context_section}
 
-Be practical and student-focused. Every assessment must be grounded in the actual article content provided."""
+Be practical and student-focused. Every assessment must be grounded in the actual article content provided.
+
+Important: When generating numerical scores for the chart, add a note that these are AI-assessed scores based on the provided content excerpts, not computed metrics. Be conservative — avoid scores above 8 unless evidence clearly justifies it."""
 
     user = f"""Compare these two articles:
 
 ARTICLE 1: {article1.get('title', 'Article 1')}
-{article1.get('content', '')[:3000]}
+{article1.get('content', '')[:6000]}
 
 ARTICLE 2: {article2.get('title', 'Article 2')}
-{article2.get('content', '')[:3000]}
+{article2.get('content', '')[:6000]}
 
 Write a structured comparison report with:
 1. Executive Summary (4-5 bullet points)
@@ -928,7 +951,7 @@ End with this JSON block:
 ```"""
 
     try:
-        return call_claude(system, user, max_tokens=4000)
+        return call_claude(system, user, max_tokens=5000)
     except Exception as e:
         logger.error("Article comparison failed: %s", e)
         return "An error occurred while generating the comparison report. Please try again."
@@ -964,6 +987,32 @@ def _count_monthly_reports(user_id: str) -> int:
         .execute()
     )
     return msg_res.count or 0
+
+
+def _profile_role(user_id: str) -> str:
+    """Return app role from profiles; default ``user`` if missing or unreadable."""
+    if not supabase:
+        return "user"
+    try:
+        res = (
+            supabase.table("profiles")
+            .select("role")
+            .eq("id", str(user_id))
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        if not rows:
+            return "user"
+        role = (rows[0].get("role") or "user").strip().lower()
+        return role if role in ("admin", "user") else "user"
+    except Exception as e:
+        logger.warning("profiles role lookup failed for %s: %s", user_id, e)
+        return "user"
+
+
+def _user_is_admin(user_id: str) -> bool:
+    return _profile_role(user_id) == "admin"
 
 
 def _insert_usage_event(user_id: Optional[str], event_type: str, metadata: Dict) -> None:
@@ -1275,10 +1324,19 @@ async def get_usage(authorization: str = Header(...)):
         if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
         reports_used = _count_monthly_reports(user.id)
+        uid = str(user.id)
+        if _user_is_admin(uid):
+            return {
+                "reports_used": reports_used,
+                "reports_limit": None,
+                "reports_remaining": None,
+                "is_admin": True,
+            }
         return {
             "reports_used": reports_used,
             "reports_limit": MONTHLY_REPORT_LIMIT,
             "reports_remaining": max(0, MONTHLY_REPORT_LIMIT - reports_used),
+            "is_admin": False,
         }
     except HTTPException:
         raise
@@ -1336,7 +1394,7 @@ async def run_research(request: Request, body: ResearchRequest, authorization: s
 
         uid = str(user.id)
         reports_used = _count_monthly_reports(user.id)
-        if reports_used >= MONTHLY_REPORT_LIMIT:
+        if not _user_is_admin(uid) and reports_used >= MONTHLY_REPORT_LIMIT:
             from datetime import date
 
             _insert_usage_event(
@@ -1476,6 +1534,25 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         if not user:
             raise HTTPException(status_code=401, detail="Invalid token")
 
+        uid = str(user.id)
+        reports_used = _count_monthly_reports(user.id)
+        if not _user_is_admin(uid) and reports_used >= MONTHLY_REPORT_LIMIT:
+            from datetime import date
+
+            _insert_usage_event(
+                uid,
+                "limit_reached",
+                {"reports_used": MONTHLY_REPORT_LIMIT, "day_of_month": date.today().day},
+            )
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "You've reached the 5 report limit for our beta. "
+                    "We're limiting usage while we improve the platform. "
+                    "Check back next month for more free reports."
+                ),
+            )
+
         if not ((body.article1_url or body.article1_text) and (body.article2_url or body.article2_text)):
             raise HTTPException(status_code=400, detail="Both articles must be provided (either URL or text)")
 
@@ -1546,6 +1623,8 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
 
         return {"conversation_id": convo_id, "new_messages": message_res.data}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in compare_articles: %s", e)
         raise HTTPException(status_code=500, detail="Failed to compare articles")
