@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 import { 
   BarChart, 
@@ -29,6 +29,12 @@ const ChartDisplay = ({ graphData }) => {
   
   // Ref for chart container
   const chartRef = useRef(null);
+
+  useEffect(() => {
+    if (graphData?.type) {
+      setActiveChartType(graphData.type);
+    }
+  }, [graphData?.type]);
   
   if (!graphData || !graphData.data || graphData.data.length === 0) {
     return null;
@@ -135,13 +141,13 @@ const ChartDisplay = ({ graphData }) => {
     }
   };
 
-  const renderBarChart = () => {
+  const renderBarChart = (chartHeight = 350) => {
     // Check if this is a comparison chart (has value2 data)
     const isComparisonChart = processedData.some(item => item.value2 !== undefined);
     
     if (isComparisonChart) {
       return (
-        <ResponsiveContainer width="100%" height={350}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <BarChart
             data={processedData}
             margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
@@ -200,7 +206,7 @@ const ChartDisplay = ({ graphData }) => {
     
     // Regular single-value bar chart
     return (
-      <ResponsiveContainer width="100%" height={350}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
         <BarChart
           data={processedData}
           margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
@@ -247,8 +253,8 @@ const ChartDisplay = ({ graphData }) => {
     );
   };
 
-  const renderPieChart = () => (
-    <ResponsiveContainer width="100%" height={350}>
+  const renderPieChart = (chartHeight = 350) => (
+    <ResponsiveContainer width="100%" height={chartHeight}>
       <PieChart>
         <Pie
           data={processedData}
@@ -281,8 +287,8 @@ const ChartDisplay = ({ graphData }) => {
     </ResponsiveContainer>
   );
 
-  const renderLineChart = () => (
-    <ResponsiveContainer width="100%" height={350}>
+  const renderLineChart = (chartHeight = 350) => (
+    <ResponsiveContainer width="100%" height={chartHeight}>
              <LineChart
          data={processedData}
          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
@@ -326,8 +332,8 @@ const ChartDisplay = ({ graphData }) => {
     </ResponsiveContainer>
   );
 
-  const renderAreaChart = () => (
-    <ResponsiveContainer width="100%" height={350}>
+  const renderAreaChart = (chartHeight = 350) => (
+    <ResponsiveContainer width="100%" height={chartHeight}>
              <AreaChart
          data={processedData}
          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
@@ -376,7 +382,7 @@ const ChartDisplay = ({ graphData }) => {
     </ResponsiveContainer>
   );
 
-  const renderScatterChart = () => {
+  const renderScatterChart = (chartHeight = 350) => {
     // Transform data for scatter plot (assuming data has x, y values or we create them)
     const scatterData = processedData.map((item, index) => ({
       x: index + 1, // Use index as x-axis
@@ -385,7 +391,7 @@ const ChartDisplay = ({ graphData }) => {
     }));
 
     return (
-      <ResponsiveContainer width="100%" height={350}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
         <ScatterChart
           data={scatterData}
           margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
@@ -432,20 +438,20 @@ const ChartDisplay = ({ graphData }) => {
     );
   };
 
-  const renderChart = () => {
+  const renderChart = (chartHeight = 350) => {
     switch (activeChartType) {
       case 'bar':
-        return renderBarChart();
+        return renderBarChart(chartHeight);
       case 'pie':
-        return renderPieChart();
+        return renderPieChart(chartHeight);
       case 'line':
-        return renderLineChart();
+        return renderLineChart(chartHeight);
       case 'area':
-        return renderAreaChart();
+        return renderAreaChart(chartHeight);
       case 'scatter':
-        return renderScatterChart();
+        return renderScatterChart(chartHeight);
       default:
-        return renderBarChart(); // Default to bar chart
+        return renderBarChart(chartHeight);
     }
   };
 
@@ -710,219 +716,7 @@ const ChartDisplay = ({ graphData }) => {
               
               {/* Large Chart */}
               <div className="bg-gray-50 rounded-lg p-6">
-                <ResponsiveContainer width="100%" height={600}>
-                  {activeChartType === 'bar' && (
-                    <BarChart data={processedData} margin={{ top: 20, right: 30, left: 40, bottom: 80 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis 
-                        dataKey="name" 
-                        label={{ value: x_label, position: 'insideBottom', offset: -10 }}
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                        fontSize={14}
-                        interval={0}
-                      />
-                      <YAxis 
-                        label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
-                        fontSize={14}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#F9FAFB', 
-                          border: '1px solid #E5E7EB',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                          fontSize: '14px'
-                        }}
-                        labelStyle={{ fontWeight: 'bold', color: '#374151' }}
-                        formatter={(value, name) => [
-                          typeof value === 'number' ? value.toLocaleString() : value,
-                          y_label || 'Value'
-                        ]}
-                        labelFormatter={(label) => `${x_label || 'Category'}: ${label}`}
-                      />
-                      <Bar 
-                        dataKey="value" 
-                        fill="#3B82F6" 
-                        radius={[6, 6, 0, 0]}
-                        stroke="#2563EB"
-                        strokeWidth={1}
-                      />
-                    </BarChart>
-                  )}
-                  
-                  {activeChartType === 'pie' && (
-                    <PieChart>
-                      <Pie
-                        data={processedData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={150}
-                        fill="#8884d8"
-                        dataKey="value"
-                        fontSize={14}
-                      >
-                        {processedData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#F9FAFB', 
-                          border: '1px solid #E5E7EB',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                          fontSize: '14px'
-                        }}
-                        formatter={(value, name) => [
-                          `${typeof value === 'number' ? value.toLocaleString() : value} (${((value / processedData.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(1)}%)`,
-                          y_label || 'Value'
-                        ]}
-                      />
-                      <Legend wrapperStyle={{ paddingTop: '30px', fontSize: '14px' }} />
-                    </PieChart>
-                  )}
-                  
-                  {activeChartType === 'line' && (
-                    <LineChart data={processedData} margin={{ top: 20, right: 30, left: 40, bottom: 80 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis 
-                        dataKey="name" 
-                        label={{ value: x_label, position: 'insideBottom', offset: -10 }}
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                        fontSize={14}
-                      />
-                      <YAxis 
-                        label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
-                        fontSize={14}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#F9FAFB', 
-                          border: '1px solid #E5E7EB',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                          fontSize: '14px'
-                        }}
-                        labelStyle={{ fontWeight: 'bold', color: '#374151' }}
-                        formatter={(value, name) => [
-                          typeof value === 'number' ? value.toLocaleString() : value,
-                          y_label || 'Value'
-                        ]}
-                        labelFormatter={(label) => `${x_label || 'Period'}: ${label}`}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="#3B82F6" 
-                        strokeWidth={4}
-                        dot={{ fill: '#3B82F6', strokeWidth: 2, r: 6 }}
-                        activeDot={{ r: 8, stroke: '#3B82F6', strokeWidth: 2 }}
-                      />
-                    </LineChart>
-                  )}
-                  
-                  {activeChartType === 'area' && (
-                    <AreaChart data={processedData} margin={{ top: 20, right: 30, left: 40, bottom: 80 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis 
-                        dataKey="name" 
-                        label={{ value: x_label, position: 'insideBottom', offset: -10 }}
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                        fontSize={14}
-                      />
-                      <YAxis 
-                        label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
-                        fontSize={14}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#F9FAFB', 
-                          border: '1px solid #E5E7EB',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                          fontSize: '14px'
-                        }}
-                        labelStyle={{ fontWeight: 'bold', color: '#374151' }}
-                        formatter={(value, name) => [
-                          typeof value === 'number' ? value.toLocaleString() : value,
-                          y_label || 'Value'
-                        ]}
-                        labelFormatter={(label) => `${x_label || 'Period'}: ${label}`}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="value" 
-                        stroke="#3B82F6" 
-                        fill="url(#colorGradientModal)"
-                        strokeWidth={3}
-                      />
-                      <defs>
-                        <linearGradient id="colorGradientModal" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
-                        </linearGradient>
-                      </defs>
-                    </AreaChart>
-                  )}
-                  
-                  {activeChartType === 'scatter' && (
-                    <ScatterChart
-                      data={processedData.map((item, index) => ({
-                        x: index + 1,
-                        y: item.value,
-                        name: item.name
-                      }))}
-                      margin={{ top: 20, right: 30, left: 40, bottom: 80 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis 
-                        type="number"
-                        dataKey="x"
-                        name={x_label || 'Position'}
-                        label={{ value: x_label || 'Position', position: 'insideBottom', offset: -10 }}
-                        fontSize={14}
-                      />
-                      <YAxis 
-                        type="number"
-                        dataKey="y"
-                        name={y_label || 'Value'}
-                        label={{ value: y_label || 'Value', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
-                        fontSize={14}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#F9FAFB', 
-                          border: '1px solid #E5E7EB',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                          fontSize: '14px'
-                        }}
-                        labelStyle={{ fontWeight: 'bold', color: '#374151' }}
-                        formatter={(value, name, props) => [
-                          typeof value === 'number' ? value.toLocaleString() : value,
-                          props.payload.name || y_label || 'Value'
-                        ]}
-                        labelFormatter={(label, payload) => 
-                          payload && payload[0] ? payload[0].payload.name : `${x_label || 'Point'}: ${label}`
-                        }
-                      />
-                      <Scatter 
-                        dataKey="y" 
-                        fill="#3B82F6"
-                        stroke="#2563EB"
-                        strokeWidth={2}
-                      />
-                    </ScatterChart>
-                  )}
-                </ResponsiveContainer>
+                {renderChart(600)}
                 
                 {/* Show All Data Button in Modal */}
                 {data.length > MAX_ITEMS && (

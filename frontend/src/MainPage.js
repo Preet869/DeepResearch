@@ -5,6 +5,7 @@ import PromptInput from './PromptInput';
 import LayeredResearchDisplay from './LayeredResearchDisplay';
 import ResearchTimeline from './components/ResearchTimeline';
 import { useAuth } from './AuthContext';
+import { config } from './config';
 
 // We will add other components like ResultsDisplay here later
 
@@ -33,7 +34,7 @@ const MainPage = () => {
     if (!token) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/messages/${convoId}`, {
+      const response = await fetch(config.endpoints.messages(convoId), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -60,7 +61,7 @@ const MainPage = () => {
     const requestBody = { prompt, conversation_id: conversationId };
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/research', {
+      const response = await fetch(config.endpoints.research, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

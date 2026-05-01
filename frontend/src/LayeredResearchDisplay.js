@@ -88,7 +88,14 @@ const LayeredResearchDisplay = ({
         sections.title = line.replace('# ', '');
       } else if (line.toLowerCase().includes('executive summary') && line.startsWith('##')) {
         inExecutive = true;
-        currentSection = { type: 'executive', content: [] };
+        const title = line.replace('## ', '');
+        currentSection = {
+          type: 'section',
+          title: title,
+          content: [],
+          icon: getSectionIcon(title)
+        };
+        sections.fullSections.push(currentSection);
       } else if (line.startsWith('## ')) {
         if (inExecutive && currentSection) {
           sections.executive = currentSection.content;
@@ -119,12 +126,12 @@ const LayeredResearchDisplay = ({
 
   const getSectionIcon = (title) => {
     const iconMap = {
-      'Introduction': '📚', 'Background': '📖', 'Literature Review': '📋',
-      'Current Evidence': '🔍', 'Key Findings': '🎯', 'Critical Analysis': '🧠',
-      'Analysis': '📊', 'Synthesis': '🔗', 'Comparative': '⚖️',
-      'Perspectives': '👥', 'Conclusions': '🎯', 'Future': '🚀',
-      'References': '📚', 'Methodology': '🔬', 'Results': '📈', 
-      'Discussion': '💭', 'Evidence': '🔍', 'Findings': '🎯'
+      'Executive Summary': '✨', 'Introduction': '📚', 'Background': '📖',
+      'Literature Review': '📋', 'Current Evidence': '🔍', 'Key Findings': '🎯',
+      'Critical Analysis': '🧠', 'Analysis': '📊', 'Synthesis': '🔗',
+      'Comparative': '⚖️', 'Perspectives': '👥', 'Conclusions': '🎯',
+      'Future': '🚀', 'References': '📚', 'Methodology': '🔬',
+      'Results': '📈', 'Discussion': '💭', 'Evidence': '🔍', 'Findings': '🎯'
     };
     
     for (const [key, icon] of Object.entries(iconMap)) {
@@ -215,7 +222,7 @@ const LayeredResearchDisplay = ({
             <span>•</span>
             <span>{sections.fullSections.length} Sections</span>
             <span>•</span>
-            <span>{Math.ceil(mainReport.content.length / 1000)} min read</span>
+            <span>{Math.ceil(mainReport.content.trim().split(/\s+/).length / 200)} min read</span>
           </div>
         </div>
 

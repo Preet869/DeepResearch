@@ -1,12 +1,13 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from './AuthContext';
+import { useAuth } from './AuthContext';
+import { config } from './config';
 import Header from './Header';
 
 const ComparisonPage = () => {
-  const { token } = useContext(AuthContext);
+  const { token } = useAuth();
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(false);
   const [inputMethod, setInputMethod] = useState('url'); // 'url' or 'text'
   const [comparisonFocus, setComparisonFocus] = useState('overall');
@@ -60,7 +61,7 @@ const ComparisonPage = () => {
         })
       };
 
-      const response = await fetch('http://127.0.0.1:8000/compare-articles', {
+      const response = await fetch(config.endpoints.compareArticles, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,31 +90,10 @@ const ComparisonPage = () => {
     navigate('/dashboard');
   };
 
-  const comparisonFocusOptions = [
-    { value: 'overall', label: 'Overall Comparison', description: 'Comprehensive analysis of all aspects' },
+  const focusOptions = [
+    { value: 'overall', label: 'Overall Comparison', description: 'Comprehensive analysis of both articles' },
     { value: 'methodology', label: 'Methodology Focus', description: 'Compare research methods and approaches' },
     { value: 'findings', label: 'Findings Focus', description: 'Compare key findings and conclusions' }
-  ];
-
-  const exampleComparisons = [
-    {
-      title: "Climate Change Studies",
-      article1: "https://example.com/climate-study-1",
-      article2: "https://example.com/climate-study-2",
-      focus: "methodology"
-    },
-    {
-      title: "AI Healthcare Applications",
-      article1: "https://example.com/ai-healthcare-1",
-      article2: "https://example.com/ai-healthcare-2",
-      focus: "findings"
-    },
-    {
-      title: "Remote Work Productivity",
-      article1: "https://example.com/remote-work-1",
-      article2: "https://example.com/remote-work-2",
-      focus: "overall"
-    }
   ];
 
   return (
@@ -301,7 +281,7 @@ const ComparisonPage = () => {
                     Comparison Focus
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {comparisonFocusOptions.map((option) => (
+                    {focusOptions.map((option) => (
                       <button
                         key={option.value}
                         type="button"

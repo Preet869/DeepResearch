@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { jsPDF } from 'jspdf';
 import ChartDisplay from './ChartDisplay';
 
 const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
   const [activeTab, setActiveTab] = useState('comparison'); // comparison, article1, article2
   const [copiedSection, setCopiedSection] = useState(null);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showContext, setShowContext] = useState(false);
 
   if (!messages || messages.length === 0) {
     return null;
@@ -90,48 +92,124 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
   const sections = parseComparisonSections(mainReport.content);
   const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
 
-  // Export functions
   const exportToPDF = () => {
-    // For now, just export as text since PDF generation would require additional libraries
-    const content = `# ${mainReport.metadata.article1_title || 'Article 1'} vs ${mainReport.metadata.article2_title || 'Article 2'}\n\n${mainReport.content}`;
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'comparison-report.txt';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+    const MM_MARGIN = 20;
+    const MM_MAX_WIDTH = 170;
+    const MM_FOOTER = 18;
 
-  const exportToMarkdown = () => {
-    const content = `# ${mainReport.metadata.article1_title || 'Article 1'} vs ${mainReport.metadata.article2_title || 'Article 2'}\n\n${mainReport.content}`;
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'comparison-report.md';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+    const ptToMm = (pt) => (pt / 72) * 25.4;
+    const lineHeightMm = (fontSizePt, factor = 1.2) => ptToMm(fontSizePt) * factor;
 
-  const exportToJSON = () => {
-    const data = {
-      title: `${mainReport.metadata.article1_title || 'Article 1'} vs ${mainReport.metadata.article2_title || 'Article 2'}`,
-      article1_title: mainReport.metadata.article1_title,
-      article2_title: mainReport.metadata.article2_title,
-      comparison_focus: mainReport.metadata.comparison_focus,
-      context: mainReport.metadata.context,
-      content: mainReport.content,
-      metadata: mainReport.metadata,
-      exportedAt: new Date().toISOString()
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const pageW = () => doc.internal.pageSize.getWidth();
+    const pageH = () => doc.internal.pageSize.getHeight();
+    const contentBottom = () => pageH() - MM_FOOTER;
+    let y = MM_MARGIN;
+
+    const newPage = () => {
+      doc.addPage();
+      y = MM_MARGIN;
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'comparison-data.json';
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const ensureSpace = (neededMm) => {
+      if (y + neededMm > contentBottom()) {
+        newPage();
+      }
+    };
+
+    const writeWrapped = (text, fontSizePt, fontStyle, extraAfterBlock = 0) => {
+      doc.setFont('helvetica', fontStyle);
+      doc.setFontSize(fontSizePt);
+      const lh = lineHeightMm(fontSizePt);
+      const chunks = doc.splitTextToSize(text || ' ', MM_MAX_WIDTH);
+      for (const line of chunks) {
+        ensureSpace(lh);
+        doc.text(line, MM_MARGIN, y, { baseline: 'top' });
+        y += lh;
+      }
+      y += extraAfterBlock;
+    };
+
+    const addPageNumbers = () => {
+      const total = doc.getNumberOfPages();
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      for (let i = 1; i <= total; i += 1) {
+        doc.setPage(i);
+        doc.text(
+          `Page ${i} of ${total}`,
+          pageW() / 2,
+          pageH() - 10,
+          { align: 'center', baseline: 'middle' },
+        );
+      }
+    };
+
+    const title1 = mainReport.metadata?.article1_title || 'Article 1';
+    const title2 = mainReport.metadata?.article2_title || 'Article 2';
+    const bodyText = String(mainReport.content || '').trim();
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    {
+      const titleLines = doc.splitTextToSize('Article Comparison Report', MM_MAX_WIDTH);
+      const lh = lineHeightMm(16);
+      for (const line of titleLines) {
+        ensureSpace(lh);
+        doc.text(line, MM_MARGIN, y, { baseline: 'top' });
+        y += lh;
+      }
+      y += 2;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    writeWrapped(`Article 1: ${title1}`, 12, 'bold', 1);
+    doc.setFont('helvetica', 'bold');
+    writeWrapped(`Article 2: ${title2}`, 12, 'bold', 2);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    {
+      const lh = lineHeightMm(11);
+      ensureSpace(lh);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, MM_MARGIN, y, { baseline: 'top' });
+      y += lh + 3;
+    }
+
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    ensureSpace(2);
+    doc.line(MM_MARGIN, y, MM_MARGIN + MM_MAX_WIDTH, y);
+    y += 5;
+
+    const renderBodyMarkdown = (body) => {
+      const lines = (body || '').split('\n');
+      for (const rawLine of lines) {
+        const line = rawLine ?? '';
+        const isH2 = /^##\s/.test(line) && !/^###\s/.test(line);
+        if (isH2) {
+          const headerPlain = line.replace(/^##\s+/, '').trim() || line;
+          writeWrapped(headerPlain, 13, 'bold', 2);
+        } else if (line.trim() === '') {
+          y += lineHeightMm(11) * 0.35;
+          ensureSpace(lineHeightMm(11) * 0.35);
+        } else {
+          writeWrapped(line, 11, 'normal', 1);
+        }
+      }
+    };
+
+    if (!bodyText) {
+      writeWrapped('No comparison content to export.', 11, 'normal', 0);
+    } else {
+      renderBodyMarkdown(bodyText);
+    }
+
+    addPageNumbers();
+    doc.save('article-comparison-report.pdf');
   };
 
   // Enhanced granular export functions
@@ -193,11 +271,25 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
         {/* Context Display */}
         {mainReport.metadata?.context && (
           <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center mb-1">
-              <span className="mr-2">🎯</span>
-              <span className="font-medium text-gray-900">Context</span>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center">
+                <span className="mr-2">🎯</span>
+                <span className="font-medium text-gray-900">Context</span>
+              </div>
+              <button
+                onClick={() => setShowContext(!showContext)}
+                className="flex items-center text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                title={showContext ? "Hide context" : "Show context"}
+              >
+                <svg className={`w-3 h-3 mr-1 transition-transform ${showContext ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                {showContext ? 'Hide' : 'Show'}
+              </button>
             </div>
-            <p className="text-sm text-gray-700">{mainReport.metadata.context}</p>
+            {showContext && (
+              <p className="text-sm text-gray-700">{mainReport.metadata.context}</p>
+            )}
           </div>
         )}
         
@@ -337,27 +429,7 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
                      className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
                    >
                      <span className="mr-2">📄</span>
-                     Export Text
-                   </button>
-                   <button
-                     onClick={() => {
-                       exportToMarkdown();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">📝</span>
-                     Markdown
-                   </button>
-                   <button
-                     onClick={() => {
-                       exportToJSON();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">💾</span>
-                     JSON Data
+                     Export PDF
                    </button>
                    
                    {/* Granular Exports */}
@@ -486,7 +558,20 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
         {activeTab === 'visualization' && (
           <div className="p-8">
             {hasChart ? (
-              <ChartDisplay graphData={mainReport.metadata.graph_data} />
+              <>
+                <ChartDisplay graphData={mainReport.metadata.graph_data} />
+                <p
+                  style={{
+                    fontSize: '12px',
+                    color: '#6b7280',
+                    fontStyle: 'italic',
+                    marginTop: '12px',
+                  }}
+                >
+                  Scores are AI-assessed based on article content and represent relative
+                  comparisons, not absolute quality metrics.
+                </p>
+              </>
             ) : (
               <div className="text-center py-12">
                 <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
