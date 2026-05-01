@@ -389,6 +389,11 @@ async def require_authenticated_user(authorization: Optional[str]):
     return user
 
 
+def _auth_uid(user: Any) -> str:
+    """Stringify auth user id for uuid columns and RLS (SimpleNamespace / Supabase User)."""
+    return str(user.id)
+
+
 # --- Claude Helper ---
 def call_claude(system_prompt: str, user_content: str, max_tokens: int = 2000) -> str:
     """Synchronous Claude API call. Returns text content."""
@@ -1212,28 +1217,33 @@ def _count_monthly_reports(user_id: str, db: Any) -> int:
     """Count assistant messages produced for this user in the current calendar month."""
     if not db:
         return 0
-    from datetime import date
-    first_of_month = date.today().replace(day=1).isoformat()
-    # Supabase Python client doesn't support cross-table joins, so we fetch
-    # conversation IDs for the user first, then count matching messages.
-    convos_res = (
-        db.table("conversations")
-        .select("id")
-        .eq("user_id", user_id)
-        .execute()
-    )
-    convo_ids = [row["id"] for row in (convos_res.data or [])]
-    if not convo_ids:
+    uid = str(user_id)
+    try:
+        from datetime import date
+        first_of_month = date.today().replace(day=1).isoformat()
+        # Supabase Python client doesn't support cross-table joins, so we fetch
+        # conversation IDs for the user first, then count matching messages.
+        convos_res = (
+            db.table("conversations")
+            .select("id")
+            .eq("user_id", uid)
+            .execute()
+        )
+        convo_ids = [row["id"] for row in (convos_res.data or [])]
+        if not convo_ids:
+            return 0
+        msg_res = (
+            db.table("messages")
+            .select("id", count="exact")
+            .eq("role", "assistant")
+            .gte("created_at", first_of_month)
+            .in_("conversation_id", convo_ids)
+            .execute()
+        )
+        return msg_res.count or 0
+    except Exception as e:
+        logger.warning("monthly report count failed: %s", e)
         return 0
-    msg_res = (
-        db.table("messages")
-        .select("id", count="exact")
-        .eq("role", "assistant")
-        .gte("created_at", first_of_month)
-        .in_("conversation_id", convo_ids)
-        .execute()
-    )
-    return msg_res.count or 0
 
 
 def _profile_role(user_id: str, db: Any) -> str:
@@ -1366,22 +1376,23 @@ async def health_check():
 async def get_folders(authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        folders_response = db.table("folders").select("*").eq("user_id", user.id).order("created_at", desc=False).execute()
+        folders_response = db.table("folders").select("*").eq("user_id", uid).order("created_at", desc=False).execute()
 
         folders_with_counts = []
-        for folder in folders_response.data:
-            count_response = db.table("conversations").select("id", count="exact").eq("user_id", user.id).eq("folder_id", folder["id"]).execute()
+        for folder in folders_response.data or []:
+            count_response = db.table("conversations").select("id", count="exact").eq("user_id", uid).eq("folder_id", folder["id"]).execute()
             folders_with_counts.append({**folder, "conversation_count": count_response.count or 0})
 
         return folders_with_counts
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error in get_folders: %s", e)
+        logger.exception("Error in get_folders: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve folders")
 
 
@@ -1389,10 +1400,11 @@ async def get_folders(authorization: Annotated[Optional[str], Header()] = None):
 async def create_folder(folder: FolderCreate, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
-        response = db.table("folders").insert({"user_id": user.id, "name": folder.name, "color": folder.color}).execute()
+        response = db.table("folders").insert({"user_id": uid, "name": folder.name, "color": folder.color}).execute()
         return response.data[0]
     except HTTPException:
         raise
@@ -1405,11 +1417,12 @@ async def create_folder(folder: FolderCreate, authorization: Annotated[Optional[
 async def update_folder(folder_id: int, folder: FolderUpdate, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        folder_check = db.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+        folder_check = db.table("folders").select("id").eq("id", folder_id).eq("user_id", uid).execute()
         if not folder_check.data:
             raise HTTPException(status_code=404, detail="Folder not found or access denied")
 
@@ -1432,17 +1445,18 @@ async def update_folder(folder_id: int, folder: FolderUpdate, authorization: Ann
 async def delete_folder(folder_id: int, delete_conversations: bool = False, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        folder_check = db.table("folders").select("id, name").eq("id", folder_id).eq("user_id", user.id).execute()
+        folder_check = db.table("folders").select("id, name").eq("id", folder_id).eq("user_id", uid).execute()
         if not folder_check.data:
             raise HTTPException(status_code=404, detail="Folder not found or access denied")
 
         folder_name = folder_check.data[0]["name"]
-        conversations_res = db.table("conversations").select("id").eq("folder_id", folder_id).eq("user_id", user.id).execute()
-        conversation_ids = [conv["id"] for conv in conversations_res.data]
+        conversations_res = db.table("conversations").select("id").eq("folder_id", folder_id).eq("user_id", uid).execute()
+        conversation_ids = [conv["id"] for conv in (conversations_res.data or [])]
 
         if delete_conversations:
             for conv_id in conversation_ids:
@@ -1450,7 +1464,7 @@ async def delete_folder(folder_id: int, delete_conversations: bool = False, auth
                 db.table("conversations").delete().eq("id", conv_id).execute()
             message = f"Folder '{folder_name}' and all {len(conversation_ids)} research items deleted successfully"
         else:
-            db.table("conversations").update({"folder_id": None}).eq("folder_id", folder_id).eq("user_id", user.id).execute()
+            db.table("conversations").update({"folder_id": None}).eq("folder_id", folder_id).eq("user_id", uid).execute()
             message = f"Folder '{folder_name}' deleted. {len(conversation_ids)} research items moved to uncategorized."
 
         db.table("folders").delete().eq("id", folder_id).execute()
@@ -1466,12 +1480,13 @@ async def delete_folder(folder_id: int, delete_conversations: bool = False, auth
 async def reorder_folders(reorder_data: FolderReorder, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
         for folder_id in reorder_data.folder_ids:
-            folder_check = db.table("folders").select("id").eq("id", folder_id).eq("user_id", user.id).execute()
+            folder_check = db.table("folders").select("id").eq("id", folder_id).eq("user_id", uid).execute()
             if not folder_check.data:
                 raise HTTPException(status_code=404, detail=f"Folder {folder_id} not found or access denied")
 
@@ -1493,16 +1508,17 @@ async def reorder_folders(reorder_data: FolderReorder, authorization: Annotated[
 async def move_conversation(move_data: ConversationMove, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        convo_check = db.table("conversations").select("id").eq("id", move_data.conversation_id).eq("user_id", user.id).execute()
+        convo_check = db.table("conversations").select("id").eq("id", move_data.conversation_id).eq("user_id", uid).execute()
         if not convo_check.data:
             raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
         if move_data.folder_id is not None:
-            folder_check = db.table("folders").select("id").eq("id", move_data.folder_id).eq("user_id", user.id).execute()
+            folder_check = db.table("folders").select("id").eq("id", move_data.folder_id).eq("user_id", uid).execute()
             if not folder_check.data:
                 raise HTTPException(status_code=404, detail="Folder not found or access denied")
 
@@ -1519,19 +1535,20 @@ async def move_conversation(move_data: ConversationMove, authorization: Annotate
 async def get_conversations(folder_id: Optional[int] = None, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        query = db.table("conversations").select("id, title, created_at, folder_id").eq("user_id", user.id)
+        query = db.table("conversations").select("id, title, created_at, folder_id").eq("user_id", uid)
         if folder_id is not None:
             query = query.eq("folder_id", folder_id)
         response = query.order("created_at", desc=True).execute()
-        return response.data
+        return response.data or []
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error in get_conversations: %s", e)
+        logger.exception("Error in get_conversations: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve conversations")
 
 
@@ -1539,16 +1556,17 @@ async def get_conversations(folder_id: Optional[int] = None, authorization: Anno
 async def get_messages(conversation_id: int, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        convo_res = db.table("conversations").select("id").eq("id", conversation_id).eq("user_id", user.id).execute()
+        convo_res = db.table("conversations").select("id").eq("id", conversation_id).eq("user_id", uid).execute()
         if not convo_res.data:
             raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
         messages_res = db.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=False).execute()
-        return messages_res.data
+        return messages_res.data or []
     except HTTPException:
         raise
     except Exception as e:
@@ -1560,11 +1578,12 @@ async def get_messages(conversation_id: int, authorization: Annotated[Optional[s
 async def delete_conversation(conversation_id: int, authorization: Annotated[Optional[str], Header()] = None):
     try:
         user, token = await require_user_and_token(authorization)
+        uid = _auth_uid(user)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        convo_check = db.table("conversations").select("id, title").eq("id", conversation_id).eq("user_id", user.id).execute()
+        convo_check = db.table("conversations").select("id, title").eq("id", conversation_id).eq("user_id", uid).execute()
         if not convo_check.data:
             raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
@@ -1590,8 +1609,8 @@ async def get_usage(authorization: Annotated[Optional[str], Header()] = None):
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
-        reports_used = _count_monthly_reports(user.id, db)
-        uid = str(user.id)
+        reports_used = _count_monthly_reports(_auth_uid(user), db)
+        uid = _auth_uid(user)
         if _user_is_admin(uid, db):
             return {
                 "reports_used": reports_used,
@@ -1608,7 +1627,7 @@ async def get_usage(authorization: Annotated[Optional[str], Header()] = None):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error in get_usage: %s", e)
+        logger.exception("Error in get_usage: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve usage")
 
 
@@ -1653,8 +1672,8 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        uid = str(user.id)
-        reports_used = _count_monthly_reports(user.id, db)
+        uid = _auth_uid(user)
+        reports_used = _count_monthly_reports(uid, db)
         if not _user_is_admin(uid, db) and reports_used >= MONTHLY_REPORT_LIMIT:
             from datetime import date
 
@@ -1678,17 +1697,17 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
 
         if not convo_id:
             title = await generate_title(body.prompt)
-            conversation_data = {"user_id": user.id, "title": title}
+            conversation_data = {"user_id": uid, "title": title}
             if body.folder_id:
                 conversation_data["folder_id"] = body.folder_id
             convo_res = db.table("conversations").insert(conversation_data).execute()
             convo_id = convo_res.data[0]["id"]
         else:
-            convo_res = db.table("conversations").select("id").eq("id", convo_id).eq("user_id", user.id).execute()
+            convo_res = db.table("conversations").select("id").eq("id", convo_id).eq("user_id", uid).execute()
             if not convo_res.data:
                 raise HTTPException(status_code=404, detail="Conversation not found or access denied")
             messages_res = db.table("messages").select("role, content").eq("conversation_id", convo_id).order("created_at").execute()
-            history = messages_res.data
+            history = messages_res.data or []
             if history:
                 conversation_summary = await summarize_conversation(history)
 
@@ -1795,8 +1814,8 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        uid = str(user.id)
-        reports_used = _count_monthly_reports(user.id, db)
+        uid = _auth_uid(user)
+        reports_used = _count_monthly_reports(uid, db)
         if not _user_is_admin(uid, db) and reports_used >= MONTHLY_REPORT_LIMIT:
             from datetime import date
 
@@ -1833,7 +1852,7 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         )
 
         title = f"Comparison: {article1.get('title', 'Article 1')[:40]} vs {article2.get('title', 'Article 2')[:40]}"
-        conversation_data = {"user_id": user.id, "title": title}
+        conversation_data = {"user_id": uid, "title": title}
         if body.folder_id:
             conversation_data["folder_id"] = body.folder_id
 
