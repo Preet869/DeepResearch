@@ -71,8 +71,8 @@ def _user_from_access_token_local(access_token: str) -> Optional[SimpleNamespace
         return None
 
 
-def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
-    """Decode JWT ``role`` claim without verification (sanity-check anon vs service_role)."""
+def _jwt_payload_from_api_key(key: str) -> Optional[dict]:
+    """Decode Supabase API key JWT payload (anon/service_role) without verifying signature."""
     if not key or not isinstance(key, str):
         return None
     parts = key.strip().split(".")
@@ -81,11 +81,47 @@ def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
     try:
         payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
         raw = base64.urlsafe_b64decode(payload_b64.encode("ascii"))
-        data = json.loads(raw)
-        role = data.get("role")
-        return str(role) if role is not None else None
+        return json.loads(raw)
     except Exception:
         return None
+
+
+def _project_ref_from_supabase_url(url: str) -> Optional[str]:
+    """Return project ref from ``https://<ref>.supabase.co``."""
+    if not (url or "").strip():
+        return None
+    try:
+        u = url.strip().rstrip("/")
+        if not u.startswith(("http://", "https://")):
+            u = f"https://{u}"
+        host = (urlparse(u).hostname or "").lower()
+        suf = ".supabase.co"
+        if host.endswith(suf):
+            return host[: -len(suf)]
+    except Exception:
+        pass
+    return None
+
+
+def _service_key_matches_supabase_url(service_key: str, supabase_url: str) -> bool:
+    """False when the key's ``ref`` claim is present and differs from URL host (cross-project mix-up)."""
+    url_ref = _project_ref_from_supabase_url(supabase_url)
+    payload = _jwt_payload_from_api_key(service_key)
+    if not payload or not url_ref:
+        return True
+    key_ref = payload.get("ref")
+    if key_ref is None:
+        return True
+    return str(key_ref).lower() == url_ref.lower()
+
+
+def _jwt_role_from_supabase_key(key: str) -> Optional[str]:
+    """Decode JWT ``role`` claim without verification (sanity-check anon vs service_role)."""
+    data = _jwt_payload_from_api_key(key)
+    if not data:
+        return None
+    role = data.get("role")
+    return str(role) if role is not None else None
 
 
 # --- Initialize Clients ---
@@ -127,13 +163,18 @@ def _user_scoped_supabase(access_token: str):
 
 
 def _db_for_access_token(access_token: str) -> Any:
-    """Use service_role client when valid; otherwise anon key + user JWT (required if SERVICE_KEY is anon/wrong)."""
+    """Prefer service_role global client only if key matches this project's URL; else anon + user JWT for REST."""
     sk = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip()
-    role = _jwt_role_from_supabase_key(sk) if sk else None
-    if role == "service_role" and supabase is not None:
-        return supabase
     url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
     anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip()
+    role = _jwt_role_from_supabase_key(sk) if sk else None
+    service_usable = (
+        role == "service_role"
+        and supabase is not None
+        and _service_key_matches_supabase_url(sk, url)
+    )
+    if service_usable:
+        return supabase
     if url and anon and access_token:
         return _user_scoped_supabase(access_token)
     return supabase
@@ -173,6 +214,11 @@ def initialize_clients():
         elif role is None:
             logger.warning(
                 "Could not decode SUPABASE_SERVICE_KEY as a Supabase JWT; verify the full key was copied."
+            )
+        elif supabase_url and not _service_key_matches_supabase_url(supabase_service_key, supabase_url):
+            logger.error(
+                "SUPABASE_SERVICE_KEY project ref does not match SUPABASE_URL — PostgREST will reject it. "
+                "Copy both from the same Supabase project (Settings → API), or set SUPABASE_ANON_KEY for REST."
             )
         supabase = create_client(supabase_url, supabase_service_key)
         logger.info("Supabase client initialized")
