@@ -1,0 +1,23 @@
+# Production: https://deepresearch-1-gdhd.onrender.com  |  Vercel: https://deepresearchbeta.vercel.app
+# Link in Dashboard → Blueprints, or mirror env vars on your Web Service.
+# Secrets (sync: false): set values in the Render Dashboard after sync.
+services:
+  - type: web
+    name: deepresearch-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
+      - key: FRONTEND_URL
+        value: https://deepresearchbeta.vercel.app
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false

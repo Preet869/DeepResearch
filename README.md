@@ -178,7 +178,9 @@ TAVILY_API_KEY=your_tavily_api_key_here
 SUPABASE_URL=your_supabase_url_here
 SUPABASE_SERVICE_KEY=your_supabase_service_key_here
 
-# CORS Configuration
+# CORS (Render): FRONTEND_URL=https://deepresearchbeta.vercel.app
+# (or ALLOWED_ORIGINS=comma-separated list; if set, overrides FRONTEND_URL)
+# Vercel build: REACT_APP_API_URL=https://deepresearch-1-gdhd.onrender.com (also in frontend/.env.production)
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000
 NODE_ENV=development
 ```
