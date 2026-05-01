@@ -1153,6 +1153,8 @@ async def get_folders(authorization: str = Header(...)):
             folders_with_counts.append({**folder, "conversation_count": count_response.count or 0})
 
         return folders_with_counts
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in get_folders: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve folders")
@@ -1167,6 +1169,8 @@ async def create_folder(folder: FolderCreate, authorization: str = Header(...)):
             raise HTTPException(status_code=401, detail="Invalid token")
         response = supabase.table("folders").insert({"user_id": user.id, "name": folder.name, "color": folder.color}).execute()
         return response.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in create_folder: %s", e)
         raise HTTPException(status_code=500, detail="Failed to create folder")
@@ -1192,6 +1196,8 @@ async def update_folder(folder_id: int, folder: FolderUpdate, authorization: str
 
         response = supabase.table("folders").update(update_data).eq("id", folder_id).execute()
         return response.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in update_folder: %s", e)
         raise HTTPException(status_code=500, detail="Failed to update folder")
@@ -1224,6 +1230,8 @@ async def delete_folder(folder_id: int, delete_conversations: bool = False, auth
 
         supabase.table("folders").delete().eq("id", folder_id).execute()
         return {"message": message}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in delete_folder: %s", e)
         raise HTTPException(status_code=500, detail="Failed to delete folder")
@@ -1249,6 +1257,8 @@ async def reorder_folders(reorder_data: FolderReorder, authorization: str = Head
             supabase.table("folders").update({"created_at": new_timestamp.isoformat()}).eq("id", folder_id).execute()
 
         return {"message": "Folders reordered successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in reorder_folders: %s", e)
         raise HTTPException(status_code=500, detail="Failed to reorder folders")
@@ -1273,6 +1283,8 @@ async def move_conversation(move_data: ConversationMove, authorization: str = He
 
         response = supabase.table("conversations").update({"folder_id": move_data.folder_id}).eq("id", move_data.conversation_id).execute()
         return response.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in move_conversation: %s", e)
         raise HTTPException(status_code=500, detail="Failed to move conversation")
@@ -1291,6 +1303,8 @@ async def get_conversations(folder_id: Optional[int] = None, authorization: str 
             query = query.eq("folder_id", folder_id)
         response = query.order("created_at", desc=True).execute()
         return response.data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in get_conversations: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve conversations")
@@ -1310,6 +1324,8 @@ async def get_messages(conversation_id: int, authorization: str = Header(...)):
 
         messages_res = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=False).execute()
         return messages_res.data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in get_messages: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve messages")
@@ -1331,6 +1347,8 @@ async def delete_conversation(conversation_id: int, authorization: str = Header(
         supabase.table("messages").delete().eq("conversation_id", conversation_id).execute()
         supabase.table("conversations").delete().eq("id", conversation_id).execute()
         return {"message": f"Research '{conversation_title}' deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in delete_conversation: %s", e)
         raise HTTPException(status_code=500, detail="Failed to delete conversation")
