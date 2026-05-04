@@ -75,6 +75,7 @@ const CitationHelper = ({ messages, onClose }) => {
   const [citationStyle, setCitationStyle] = useState('apa');
   const [citations, setCitations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedIndices, setCopiedIndices] = useState(new Set());
 
   const citationStyles = [
     { id: 'apa', name: 'APA', description: 'American Psychological Association' },
@@ -159,6 +160,27 @@ const CitationHelper = ({ messages, onClose }) => {
     }
   };
 
+  const copyAPACitation = async (source, index) => {
+    try {
+      const apaCitation = generateCitationForSource(source, 'apa');
+      await navigator.clipboard.writeText(apaCitation);
+      
+      // Add visual feedback
+      setCopiedIndices(prev => new Set(prev).add(index));
+      
+      // Remove feedback after 2 seconds
+      setTimeout(() => {
+        setCopiedIndices(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(index);
+          return newSet;
+        });
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy APA citation:', error);
+    }
+  };
+
   const copyAllCitations = async () => {
     const allCitations = citations.map((citation) => citation.citations).join('\n\n');
 
@@ -216,6 +238,7 @@ const CitationHelper = ({ messages, onClose }) => {
                 </button>
               )}
             </div>
+            
 
             {isLoading ? (
               <div className="text-center py-8">
@@ -233,10 +256,30 @@ const CitationHelper = ({ messages, onClose }) => {
                       </div>
                       <button
                         type="button"
-                        onClick={() => copyToClipboard(citation.citations)}
-                        className="ml-4 px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm"
+                        onClick={() => copyAPACitation(citation, index)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 transform ${
+                          copiedIndices.has(index)
+                            ? 'bg-green-500 text-white scale-105 shadow-md'
+                            : 'bg-blue-500 text-white hover:bg-blue-600 hover:scale-105'
+                        }`}
                       >
-                        Copy
+                        <div className="flex items-center space-x-1">
+                          {copiedIndices.has(index) ? (
+                            <>
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                              <span>Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span>Copy APA</span>
+                            </>
+                          )}
+                        </div>
                       </button>
                     </div>
                     <div className="bg-gray-50 rounded p-3">

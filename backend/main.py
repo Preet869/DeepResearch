@@ -443,7 +443,7 @@ async def evaluate_and_refine_sources(research_question: str, sources: List[Dict
 
     sources_preview = [
         {"index": i, "title": s.get("title", "")[:80], "domain": s.get("url", "").split("/")[2] if s.get("url") else ""}
-        for i, s in enumerate(current[:15])
+        for i, s in enumerate(current[:15], 1)
     ]
     eval_system = """You evaluate whether a set of web search results adequately covers a research question for writing a grounded research report.
 
@@ -518,7 +518,7 @@ async def extract_facts_from_sources(question: str, sources: List[Dict]) -> Dict
         f"    Published: {s.get('published_date', 'n.d.')}\n"
         f"    Domain: {s.get('url', '').split('/')[2] if s.get('url') else 'Unknown'}\n"
         f"    Content: {s.get('content', '')[:600]}"
-        for i, s in enumerate(sources)
+        for i, s in enumerate(sources, 1)
     ])
 
     system = """You are a research fact extractor. Your ONLY job is to extract facts from the provided sources.
@@ -576,7 +576,7 @@ async def generate_report_from_facts(
 
     sources_text = "\n".join([
         f"[{i}] {s.get('title', 'Unknown')} — {s.get('url', '')}"
-        for i, s in enumerate(sources)
+        for i, s in enumerate(sources, 1)
     ])
 
     summary_section = f"\nPrevious conversation context:\n{conversation_summary}\n" if conversation_summary else ""
@@ -1631,6 +1631,19 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
             "conversation_id": convo_id, "role": "user", "content": body.prompt
         }).execute()
 
+        # Track assignment brief detection (500+ words likely indicates assignment paste)
+        word_count = len(body.prompt.split())
+        if word_count >= 500:
+            _insert_usage_event(
+                uid,
+                "assignment_brief_detected",
+                {
+                    "prompt_length": len(body.prompt),
+                    "word_count": word_count,
+                    "endpoint": "research"
+                }
+            )
+
         if body.conversation_id:
             _insert_usage_event(
                 uid,
@@ -1775,6 +1788,38 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         db.table("messages").insert({
             "conversation_id": convo_id, "role": "user", "content": user_message_content
         }).execute()
+
+        # Track assignment brief detection for comparison inputs (500+ words likely indicates assignment paste)
+        # Check context field
+        if body.context:
+            context_word_count = len(body.context.split())
+            if context_word_count >= 500:
+                _insert_usage_event(
+                    uid,
+                    "assignment_brief_detected",
+                    {
+                        "prompt_length": len(body.context),
+                        "word_count": context_word_count,
+                        "endpoint": "compare_articles",
+                        "field": "context"
+                    }
+                )
+        
+        # Check article text fields (students might paste long assignment texts)
+        for i, article_text in enumerate([body.article1_text, body.article2_text], 1):
+            if article_text:
+                article_word_count = len(article_text.split())
+                if article_word_count >= 500:
+                    _insert_usage_event(
+                        uid,
+                        "assignment_brief_detected",
+                        {
+                            "prompt_length": len(article_text),
+                            "word_count": article_word_count,
+                            "endpoint": "compare_articles",
+                            "field": f"article{i}_text"
+                        }
+                    )
 
         report_content = comparison_report
         metadata_json = {}
