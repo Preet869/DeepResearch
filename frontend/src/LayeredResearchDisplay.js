@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ChartDisplay from './ChartDisplay';
 import ComparisonReportDisplay from './ComparisonReportDisplay';
+import CitationHelper from './components/CitationHelper';
 
 const LayeredResearchDisplay = ({ 
   messages, 
@@ -17,6 +18,7 @@ const LayeredResearchDisplay = ({
   const [copiedSection, setCopiedSection] = useState(null);
   const [currentFollowUpQuery, setCurrentFollowUpQuery] = useState('');
   const [activeTab, setActiveTab] = useState('summary');
+  const [showCitationHelper, setShowCitationHelper] = useState(false);
 
   // Clear the current follow-up query when loading finishes
   useEffect(() => {
@@ -140,6 +142,26 @@ const LayeredResearchDisplay = ({
     return '📄';
   };
 
+  // Extract URLs from messages to count sources
+  const extractUrlsFromMessages = (messages) => {
+    const urls = [];
+    const seen = new Set();
+    messages.forEach((message) => {
+      if (message.role === 'assistant' && message.content) {
+        const urlRegex = /https?:\/\/[^\s]+/g;
+        const found = message.content.match(urlRegex) || [];
+        found.forEach((raw) => {
+          const url = String(raw).trim().replace(/[)\].,;:'"»]+$/g, '');
+          if (url && !seen.has(url)) {
+            seen.add(url);
+            urls.push(url);
+          }
+        });
+      }
+    });
+    return urls;
+  };
+
   const copyToClipboard = async (text, sectionName) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -152,6 +174,10 @@ const LayeredResearchDisplay = ({
 
   const sections = parseResearchContent(mainReport.content);
   const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
+  
+  // Extract sources for the button
+  const allUrls = extractUrlsFromMessages(messages);
+  const sourceCount = allUrls.length;
 
   // Check if this is a comparison report
   const isComparisonReport = mainReport.metadata?.comparison_type === 'article_comparison';
@@ -218,13 +244,29 @@ const LayeredResearchDisplay = ({
           <div className="flex items-center space-x-4 text-sm text-gray-500">
             <span>Generated {new Date(mainReport.created_at).toLocaleDateString()}</span>
             <span>•</span>
-            <span>5 Sources</span>
+            <span>{sourceCount} Sources</span>
             <span>•</span>
             <span>{sections.fullSections.length} Sections</span>
             <span>•</span>
             <span>{Math.ceil(mainReport.content.trim().split(/\s+/).length / 200)} min read</span>
           </div>
         </div>
+
+        {/* View All Sources Button */}
+        {sourceCount > 0 && (
+          <div className="px-8 py-4 border-b border-gray-200 bg-blue-50">
+            <button
+              onClick={() => setShowCitationHelper(true)}
+              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <span className="mr-2">📚</span>
+              View All {sourceCount} Sources in Citation Format
+            </button>
+            <p className="text-sm text-blue-700 mt-2">
+              Access properly formatted citations for all sources used in this research report.
+            </p>
+          </div>
+        )}
 
         {/* Tab Content */}
         {activeTab === 'summary' ? (
@@ -325,6 +367,14 @@ const LayeredResearchDisplay = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Citation Helper Modal */}
+      {showCitationHelper && (
+        <CitationHelper
+          messages={messages}
+          onClose={() => setShowCitationHelper(false)}
+        />
       )}
     </div>
   );
