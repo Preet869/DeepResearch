@@ -198,7 +198,7 @@ const LoginPage = () => {
   const AuthTopNav = () => {
     const links = [
       { id: 'welcome', label: 'Home' },
-      { id: 'auth', label: 'Sign in' }
+      { id: 'auth', label: 'Sign In' }
     ];
 
     const go = (route) => {
@@ -229,7 +229,7 @@ const LoginPage = () => {
                 color: l.id === 'auth' ? 'var(--fg)' : 'var(--mut)',
                 fontSize: 16, padding: '15px 24px', borderRadius: 8,
                 fontFamily: 'JetBrains Mono, monospace',
-                textTransform: 'lowercase', letterSpacing: '.02em',
+                letterSpacing: '.02em',
                 position: 'relative'
               }}>
               {l.label}
