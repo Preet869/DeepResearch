@@ -4,6 +4,8 @@ import remarkGfm from 'remark-gfm';
 import ChartDisplay from './ChartDisplay';
 import ComparisonReportDisplay from './ComparisonReportDisplay';
 import CitationHelper from './components/CitationHelper';
+import ResearchGeneratingPanel from './components/ResearchGeneratingPanel';
+import { FrameDivider } from './components/shared';
 
 const LayeredResearchDisplay = ({ 
   messages, 
@@ -27,22 +29,22 @@ const LayeredResearchDisplay = ({
     }
   }, [isLoading]);
 
+  const userMsgCount = messages.filter((m) => m.role === 'user').length;
+  const assistantMsgCount = messages.filter((m) => m.role === 'assistant').length;
+
   if (isLoading && messages.length === 0) {
     return (
-      <div className="flex justify-center items-center h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Generating comprehensive research report...</p>
-        </div>
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 py-2">
+        <ResearchGeneratingPanel query="" />
       </div>
     );
   }
 
   if (messages.length === 0) {
     return (
-      <div className="text-center text-gray-500 py-20">
-        <h2 className="text-2xl font-semibold">Welcome to DeepResearch</h2>
-        <p className="mt-2">Start a new research conversation by typing your query below.</p>
+      <div className="text-center py-20 px-4" style={{ color: 'var(--mut)' }}>
+        <h2 className="serif text-2xl" style={{ color: 'var(--fg)' }}>Welcome to DeepResearch</h2>
+        <p className="mt-2 mono text-sm">Start a new research conversation by typing your query below.</p>
       </div>
     );
   }
@@ -68,7 +70,17 @@ const LayeredResearchDisplay = ({
   };
 
   const { mainReport, activeQuery } = organizeMessages();
-  
+
+  /* Waiting for the assistant message for the latest user turn (first report or follow-up). */
+  if (isLoading && !mainReport && userMsgCount > assistantMsgCount) {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    return (
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 py-2">
+        <ResearchGeneratingPanel query={lastUser?.content || ''} />
+      </div>
+    );
+  }
+
   if (!mainReport) return null;
 
   // Parse research content into structured sections
@@ -172,18 +184,10 @@ const LayeredResearchDisplay = ({
     }
   };
 
-  const sections = parseResearchContent(mainReport.content);
-  const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
-  
-  // Extract sources for the button
   const allUrls = extractUrlsFromMessages(messages);
   const sourceCount = allUrls.length;
 
-  // Check if this is a comparison report
-  const isComparisonReport = mainReport.metadata?.comparison_type === 'article_comparison';
-
-  // If it's a comparison report, use the specialized comparison display
-  if (isComparisonReport) {
+  if (mainReport.metadata?.comparison_type === 'article_comparison') {
     return (
       <ComparisonReportDisplay 
         messages={messages} 
@@ -196,74 +200,125 @@ const LayeredResearchDisplay = ({
     );
   }
 
+  const sections = parseResearchContent(mainReport.content);
+  const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
+
+  const chartFigWrapper = (children) => (
+    <div
+      className="not-prose mt-8 p-6 rounded-xl"
+      style={{
+        background: 'var(--card)',
+        border: '1px solid var(--line-strong)',
+        boxShadow: '0 12px 40px -24px rgba(124,92,255,.35)',
+      }}
+    >
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="mono" style={{ fontSize: 11, color: 'var(--violet)', letterSpacing: '.16em' }}>
+          FIG. 1
+        </span>
+        <span className="mono" style={{ fontSize: 10, color: 'var(--mut2)' }}>
+          from this report
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-2">
       {/* Tabs Header */}
-      <div className="bg-white rounded-t-lg shadow-sm border-b border-gray-200">
-        <div className="px-8 py-4">
+      <div
+        className="rounded-t-xl shadow-sm border-b"
+        style={{ background: 'var(--card)', borderColor: 'var(--line)' }}
+      >
+        <div className="px-6 py-4">
           <div className="flex space-x-1">
             <button
               onClick={() => setActiveTab('summary')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className="mono px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={
                 activeTab === 'summary'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+                  ? { background: 'var(--bg-2)', color: 'var(--violet-2)', border: '1px solid var(--violet)' }
+                  : { color: 'var(--mut)', border: '1px solid transparent' }
+              }
             >
-              📋 Summary
+              Summary
             </button>
             <button
               onClick={() => setActiveTab('full')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className="mono px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={
                 activeTab === 'full'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
+                  ? { background: 'var(--bg-2)', color: 'var(--violet-2)', border: '1px solid var(--violet)' }
+                  : { color: 'var(--mut)', border: '1px solid transparent' }
+              }
             >
-              📄 Full Report
+              Full Report
             </button>
           </div>
         </div>
       </div>
 
       {/* Main Report */}
-      <div className="bg-white rounded-b-lg shadow-sm">
+      <div className="rounded-b-xl shadow-sm border border-t-0" style={{ background: 'var(--card)', borderColor: 'var(--line)' }}>
         {/* Report Header */}
-        <div className="px-8 py-6 border-b border-gray-200">
+        <div className="px-6 py-6 border-b" style={{ borderColor: 'var(--line)' }}>
+          <div className="mb-4 flex items-baseline justify-between flex-wrap gap-2">
+            <span className="mono" style={{ fontSize: 11, color: 'var(--violet)', letterSpacing: '.2em', textTransform: 'uppercase' }}>
+              feature · research report
+            </span>
+          </div>
           {activeQuery && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-700 font-medium">Research Query:</p>
-              <p className="text-blue-900 italic">"{activeQuery}"</p>
-            </div>
+            <blockquote
+              className="serif mb-6 pl-4 py-3 my-0"
+              style={{
+                borderLeft: '3px solid var(--violet)',
+                fontSize: 'clamp(18px, 2.5vw, 22px)',
+                lineHeight: 1.35,
+                fontStyle: 'italic',
+                color: 'var(--mut)',
+              }}
+            >
+              &ldquo;{activeQuery}&rdquo;
+            </blockquote>
           )}
-          
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+
+          <h1
+            className="serif mb-4"
+            style={{
+              fontSize: 'clamp(32px, 4vw, 48px)',
+              lineHeight: 0.95,
+              letterSpacing: '-.025em',
+              color: 'var(--fg)',
+            }}
+          >
             {sections.title || 'Research Report'}
           </h1>
-          
-          <div className="flex items-center space-x-4 text-sm text-gray-500">
-            <span>Generated {new Date(mainReport.created_at).toLocaleDateString()}</span>
-            <span>•</span>
-            <span>{sourceCount} Sources</span>
-            <span>•</span>
-            <span>{sections.fullSections.length} Sections</span>
-            <span>•</span>
+
+          <div className="mono flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--mut2)', letterSpacing: '.04em' }}>
+            <span>{new Date(mainReport.created_at).toLocaleDateString()}</span>
+            <span>·</span>
+            <span>{sourceCount} sources</span>
+            <span>·</span>
+            <span>{sections.fullSections.length} sections</span>
+            <span>·</span>
             <span>{Math.ceil(mainReport.content.trim().split(/\s+/).length / 200)} min read</span>
           </div>
         </div>
 
         {/* View All Sources Button */}
         {sourceCount > 0 && (
-          <div className="px-8 py-4 border-b border-gray-200 bg-blue-50">
+          <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--line)', background: 'var(--bg-2)' }}>
             <button
               onClick={() => setShowCitationHelper(true)}
-              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              type="button"
+              className="btn btn-new-research inline-flex items-center px-6 py-3 rounded-lg font-medium"
             >
               <span className="mr-2">📚</span>
-              View All {sourceCount} Sources in Citation Format
+              View all {sourceCount} sources (citation format)
             </button>
-            <p className="text-sm text-blue-700 mt-2">
-              Access properly formatted citations for all sources used in this research report.
+            <p className="text-sm mt-2 mono" style={{ color: 'var(--mut)' }}>
+              Formatted citations for every source in this report.
             </p>
           </div>
         )}
@@ -271,44 +326,34 @@ const LayeredResearchDisplay = ({
         {/* Tab Content */}
         {activeTab === 'summary' ? (
           /* Executive Summary */
-          <div className="px-8 py-6 bg-gray-50">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="mr-2">✨</span>
-              Key Insights and Findings at a Glance
-            </h2>
+          <div className="px-6 py-6" style={{ background: 'var(--paper)' }}>
+            <FrameDivider label="01 · Key insights" />
             <div className="space-y-3">
               {sections.executive.map((item, index) => (
-                <p key={index} className="text-gray-700 leading-relaxed">
+                <p key={index} style={{ color: 'var(--fg)', lineHeight: 1.65, fontSize: 17 }}>
                   • {item}
                 </p>
               ))}
             </div>
-            
+
             {/* Chart in Summary View */}
-            {hasChart && (
-              <div className="mt-8 p-6 bg-white rounded-lg border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <span className="mr-2">📊</span>
-                  Key Data Insights
-                </h3>
-                <ChartDisplay graphData={mainReport.metadata.graph_data} />
-              </div>
-            )}
+            {hasChart && chartFigWrapper(<ChartDisplay graphData={mainReport.metadata.graph_data} />)}
           </div>
         ) : (
           /* Full Report Sections */
-          <div className="px-8 py-6 space-y-8">
+          <div className="px-6 py-6 space-y-8" style={{ background: 'var(--paper)' }}>
             {sections.fullSections.map((section, index) => (
               <React.Fragment key={index}>
                 <section className="prose prose-lg max-w-none">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center m-0">
+                    <h2 className="serif text-2xl m-0 flex items-center" style={{ color: 'var(--fg)', letterSpacing: '-.02em' }}>
                       <span className="mr-3">{section.icon}</span>
                       {section.title}
                     </h2>
                     <button
                       onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
-                      className="text-gray-400 hover:text-gray-600 p-2"
+                      className="p-2 rounded-md transition-colors"
+                      style={{ color: 'var(--mut)' }}
                       title="Copy section"
                     >
                       {copiedSection === section.title ? (
@@ -320,7 +365,7 @@ const LayeredResearchDisplay = ({
                       )}
                     </button>
                   </div>
-                  <div className="text-gray-700 leading-relaxed">
+                  <div className="leading-relaxed" style={{ color: 'var(--fg)' }}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {section.content.join('\n')}
                     </ReactMarkdown>
@@ -334,20 +379,11 @@ const LayeredResearchDisplay = ({
             {/* References & Data Visualizations Section - At the End */}
             {hasChart && (
               <section className="prose prose-lg max-w-none">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-bold text-gray-900 flex items-center m-0">
-                    <span className="mr-3">📊</span>
-                    References & Data Visualizations
-                  </h2>
-                </div>
-                <div className="text-gray-700 leading-relaxed mb-6">
-                  <p className="text-sm">
-                    The following data visualization provides quantitative insights and supporting evidence for the analysis presented in this report.
-                  </p>
-                </div>
-                <div className="not-prose">
-                  <ChartDisplay graphData={mainReport.metadata.graph_data} />
-                </div>
+                <FrameDivider label="Data visualization" />
+                <p className="text-sm mono mb-4" style={{ color: 'var(--mut)' }}>
+                  Quantitative view supporting the analysis in this report.
+                </p>
+                {chartFigWrapper(<ChartDisplay graphData={mainReport.metadata.graph_data} />)}
               </section>
             )}
           </div>
@@ -358,12 +394,18 @@ const LayeredResearchDisplay = ({
 
       {/* Loading State for Follow-ups */}
       {isLoading && (
-        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 px-6 py-4 flex items-center space-x-4">
-          <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500"></div>
+        <div
+          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-xl shadow-lg px-6 py-4 flex items-center space-x-4 z-20 border"
+          style={{ background: 'var(--card)', borderColor: 'var(--line-strong)' }}
+        >
+          <div
+            className="animate-spin rounded-full h-5 w-5 border-2 border-transparent"
+            style={{ borderTopColor: 'var(--violet)', borderRightColor: 'var(--violet)' }}
+          />
           <div className="text-sm">
-            <p className="font-medium text-gray-900">Generating follow-up research...</p>
+            <p className="font-medium" style={{ color: 'var(--fg)' }}>Generating follow-up research…</p>
             {currentFollowUpQuery && (
-              <p className="text-gray-500 text-xs mt-1">"{currentFollowUpQuery}"</p>
+              <p className="mono text-xs mt-1" style={{ color: 'var(--mut)' }}>&ldquo;{currentFollowUpQuery}&rdquo;</p>
             )}
           </div>
         </div>

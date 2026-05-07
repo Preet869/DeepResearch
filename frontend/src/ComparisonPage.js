@@ -1,36 +1,103 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { config } from './config';
 import { apiFetch } from './apiClient';
 import Header from './Header';
+import { PaperInput, Pill } from './components/compare';
+import { TipCard } from './components/TipCard';
+import { Icon } from './components/shared';
+
+const SESSION_CONTEXT_HINT_KEY = 'dr-compare-context-hint-seen';
+const CONTEXT_WIDE_BREAKPOINT = 900;
+
+/** Nearly straight cyan cue, points left toward “+ optional context”. */
+function CompareHintArrow({ color = 'var(--cyan)', width = 132 }) {
+  const h = 24;
+  return (
+    <svg width={width} height={h} viewBox={`0 0 ${width} ${h}`} fill="none" aria-hidden style={{ display: 'block' }}>
+      <path
+        d={`M ${width - 6} ${h / 2} H 30`}
+        stroke={color}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <path
+        d={`M 34 ${h / 2 - 7} L 18 ${h / 2} L 34 ${h / 2 + 7}`}
+        stroke={color}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Same dot language as Welcome “four-step pipeline”; overall uses red (--hot). */
+const FOCUS_PILLS = [
+  { value: 'overall', label: 'Focus · overall', dotColor: 'var(--hot)' },
+  { value: 'methodology', label: 'Focus · methodology', dotColor: 'var(--cyan)' },
+  { value: 'findings', label: 'Focus · findings', dotColor: 'var(--sun)' },
+];
 
 const ComparisonPage = () => {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
-  const [inputMethod, setInputMethod] = useState('url'); // 'url' or 'text'
+  const [inputMethod, setInputMethod] = useState('url');
   const [comparisonFocus, setComparisonFocus] = useState('overall');
-  
-  // Article 1 data
+
   const [article1Url, setArticle1Url] = useState('');
   const [article1Text, setArticle1Text] = useState('');
   const [article1Title, setArticle1Title] = useState('');
-  
-  // Article 2 data
+
   const [article2Url, setArticle2Url] = useState('');
   const [article2Text, setArticle2Text] = useState('');
   const [article2Title, setArticle2Title] = useState('');
-  
-  // Context field for targeted analysis
+
   const [context, setContext] = useState('');
-  
+  const [showContext, setShowContext] = useState(false);
   const [error, setError] = useState('');
+  const [contextHintDismissed, setContextHintDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem(SESSION_CONTEXT_HINT_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [wideContextLayout, setWideContextLayout] = useState(
+    typeof window !== 'undefined' ? window.matchMedia(`(min-width: ${CONTEXT_WIDE_BREAKPOINT}px)`).matches : true
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${CONTEXT_WIDE_BREAKPOINT}px)`);
+    const onChange = () => setWideContextLayout(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!showContext) return;
+    try {
+      sessionStorage.setItem(SESSION_CONTEXT_HINT_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+    setContextHintDismissed(true);
+  }, [showContext]);
+
+  const showContextHintArrow = !showContext && !contextHintDismissed;
+
+  const compareReady =
+    inputMethod === 'url'
+      ? Boolean(article1Url.trim() && article2Url.trim())
+      : Boolean(article1Text.trim() && article2Text.trim());
+  const compareSubmitDisabled = !compareReady || loading;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
-    // Validation
+
     if (inputMethod === 'url') {
       if (!article1Url.trim() || !article2Url.trim()) {
         setError('Please provide URLs for both articles');
@@ -49,15 +116,17 @@ const ComparisonPage = () => {
       const requestBody = {
         comparison_focus: comparisonFocus,
         context: context.trim() || null,
-        ...(inputMethod === 'url' ? {
-          article1_url: article1Url.trim(),
-          article2_url: article2Url.trim()
-        } : {
-          article1_text: article1Text.trim(),
-          article1_title: article1Title.trim() || 'Article 1',
-          article2_text: article2Text.trim(),
-          article2_title: article2Title.trim() || 'Article 2'
-        })
+        ...(inputMethod === 'url'
+          ? {
+              article1_url: article1Url.trim(),
+              article2_url: article2Url.trim(),
+            }
+          : {
+              article1_text: article1Text.trim(),
+              article1_title: article1Title.trim() || 'Article 1',
+              article2_text: article2Text.trim(),
+              article2_title: article2Title.trim() || 'Article 2',
+            }),
       };
 
       const response = await apiFetch(config.endpoints.compareArticles, {
@@ -65,408 +134,367 @@ const ComparisonPage = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
         const data = await response.json();
-        // Navigate to the research page with the comparison conversation
         navigate(`/research?convo_id=${data.conversation_id}`);
       } else {
         const errorData = await response.json();
         setError(errorData.detail || 'Failed to compare articles');
       }
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (err) {
+      console.error('Error:', err);
       setError('Failed to compare articles. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const goBackToDashboard = () => {
-    navigate('/dashboard');
-  };
-
-  const focusOptions = [
-    { value: 'overall', label: 'Overall Comparison', description: 'Comprehensive analysis of both articles' },
-    { value: 'methodology', label: 'Methodology Focus', description: 'Compare research methods and approaches' },
-    { value: 'findings', label: 'Findings Focus', description: 'Compare key findings and conclusions' }
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      style={{
+        minHeight: '100dvh',
+        display: 'flex',
+        flexDirection: 'column',
+        color: 'var(--fg)',
+        background: 'var(--bg)',
+      }}
+    >
       <Header />
-      
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center mb-4">
+
+      <main
+        className="dot-paper"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          padding: '20px 32px 18px',
+          boxSizing: 'border-box',
+        }}
+      >
+        <form onSubmit={handleSubmit} style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <span className="sticker" style={{ '--dot-color': 'var(--violet)' }}>
+            <span className="dot" />
+            compare two articles
+          </span>
+
+          <h1
+            className="serif"
+            style={{
+              fontSize: 'clamp(44px, 6vw, 84px)',
+              lineHeight: 0.95,
+              letterSpacing: '-.025em',
+              margin: '12px 0 0',
+            }}
+          >
+            Two papers <span style={{ fontStyle: 'italic', color: 'var(--violet)' }}>walk in</span>.
+            <br />
+            One synthesis walks out.
+          </h1>
+          <p style={{ marginTop: 14, fontSize: 18, lineHeight: 1.5, color: 'var(--mut)', maxWidth: 640 }}>
+            Drop in URLs or paste full text. We&apos;ll align methods, findings, and evidence quality.
+          </p>
+
+          {inputMethod === 'text' && (
             <button
-              onClick={goBackToDashboard}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors mr-4"
-              title="Back to Dashboard"
+              type="button"
+              onClick={() => setInputMethod('url')}
+              className="mono"
+              style={{
+                marginTop: 16,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--cyan)',
+                fontSize: 12,
+                letterSpacing: '.06em',
+                padding: 0,
+                textDecoration: 'underline',
+                textUnderlineOffset: 3,
+              }}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
+              ← use article URLs instead
             </button>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Smart Article Comparison</h1>
-              <p className="text-gray-600 mt-1">Get AI-powered academic analysis tailored for students and researchers</p>
+          )}
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 88px 1fr',
+              gap: 18,
+              marginTop: 22,
+              alignItems: 'stretch',
+            }}
+          >
+            <PaperInput
+              letter="A"
+              tint="var(--violet)"
+              variant="comfortable"
+              inputMethod={inputMethod}
+              onSwitchToText={() => setInputMethod('text')}
+              urlValue={article1Url}
+              onUrlChange={setArticle1Url}
+              titleValue={article1Title}
+              onTitleChange={setArticle1Title}
+              textValue={article1Text}
+              onTextChange={setArticle1Text}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="serif" style={{ fontSize: 64, fontStyle: 'italic', color: 'var(--mut2)' }}>
+                vs
+              </div>
             </div>
+            <PaperInput
+              letter="B"
+              tint="var(--cyan)"
+              variant="comfortable"
+              inputMethod={inputMethod}
+              onSwitchToText={() => setInputMethod('text')}
+              urlValue={article2Url}
+              onUrlChange={setArticle2Url}
+              titleValue={article2Title}
+              onTitleChange={setArticle2Title}
+              textValue={article2Text}
+              onTextChange={setArticle2Text}
+            />
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Form */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Input Method Selection */}
-                <div>
-                  <label className="text-base font-medium text-gray-900 block mb-4">
-                    How would you like to provide the articles?
-                  </label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setInputMethod('url')}
-                      className={`p-4 rounded-lg border-2 transition-all ${
-                        inputMethod === 'url'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-center mb-2">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                      </div>
-                      <div className="font-medium">URLs</div>
-                      <div className="text-sm text-gray-600">Provide article URLs</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInputMethod('text')}
-                      className={`p-4 rounded-lg border-2 transition-all ${
-                        inputMethod === 'text'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-center mb-2">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <div className="font-medium">Text</div>
-                      <div className="text-sm text-gray-600">Paste article text</div>
-                    </button>
-                  </div>
-                </div>
+          <div
+            style={{
+              marginTop: 18,
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 18,
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {FOCUS_PILLS.map((p) => (
+                <Pill
+                  key={p.value}
+                  type="button"
+                  variant="comfortable"
+                  dotColor={p.dotColor}
+                  label={p.label}
+                  selected={comparisonFocus === p.value}
+                  onClick={() => setComparisonFocus(p.value)}
+                />
+              ))}
+            </div>
+            <button
+              type="submit"
+              disabled={compareSubmitDisabled}
+              className="btn btn-new-research flex items-center justify-center gap-2 px-5 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-45 shrink-0"
+              style={{ borderRadius: 9999 }}
+            >
+              {loading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <>
+                  Compare
+                  <Icon.Arrow />
+                </>
+              )}
+            </button>
+          </div>
 
-                {/* Article Inputs */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Article 1 */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                      <span className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold mr-3">1</span>
-                      First Article
-                    </h3>
-                    
-                    {inputMethod === 'url' ? (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Article URL
-                        </label>
-                        <input
-                          type="url"
-                          value={article1Url}
-                          onChange={(e) => setArticle1Url(e.target.value)}
-                          placeholder="https://example.com/article1"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          required
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Article Title (Optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={article1Title}
-                            onChange={(e) => setArticle1Title(e.target.value)}
-                            placeholder="Article 1 Title"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Article Text
-                          </label>
-                          <textarea
-                            value={article1Text}
-                            onChange={(e) => setArticle1Text(e.target.value)}
-                            placeholder="Paste the full text of the first article here..."
-                            rows={8}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            required
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Article 2 */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                      <span className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-bold mr-3">2</span>
-                      Second Article
-                    </h3>
-                    
-                    {inputMethod === 'url' ? (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Article URL
-                        </label>
-                        <input
-                          type="url"
-                          value={article2Url}
-                          onChange={(e) => setArticle2Url(e.target.value)}
-                          placeholder="https://example.com/article2"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          required
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Article Title (Optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={article2Title}
-                            onChange={(e) => setArticle2Title(e.target.value)}
-                            placeholder="Article 2 Title"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Article Text
-                          </label>
-                          <textarea
-                            value={article2Text}
-                            onChange={(e) => setArticle2Text(e.target.value)}
-                            placeholder="Paste the full text of the second article here..."
-                            rows={8}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            required
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Comparison Focus */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Comparison Focus
-                  </label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {focusOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setComparisonFocus(option.value)}
-                        className={`p-4 rounded-lg border-2 text-left transition-all ${
-                          comparisonFocus === option.value
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-medium text-gray-900">{option.label}</div>
-                        <div className="text-sm text-gray-600 mt-1">{option.description}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Context Field */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <span className="flex items-center">
-                      <span className="mr-2">🎯</span>
-                      Context (Optional but Recommended)
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    value={context}
-                    onChange={(e) => setContext(e.target.value)}
-                    placeholder='e.g., "Topic: climate justice" or "Assignment: compare discourse analysis methods"'
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Adding context helps generate more targeted and relevant analysis for your specific needs
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {['Topic: climate change', 'Assignment: methodology comparison', 'Course: Environmental Policy', 'Focus: practical applications'].map((example) => (
-                      <button
-                        key={example}
-                        type="button"
-                        onClick={() => setContext(example)}
-                        className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
-                      >
-                        {example}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Error Message */}
-                {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex">
-                      <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-sm text-red-600">{error}</p>
-                    </div>
+          {wideContextLayout ? (
+            <div
+              style={{
+                marginTop: 14,
+                display: 'grid',
+                gridTemplateColumns:
+                  showContext || !showContextHintArrow
+                    ? 'minmax(0, 1fr) minmax(360px, min(520px, 46vw))'
+                    : 'minmax(0, 1fr) 88px minmax(360px, min(520px, 46vw))',
+                columnGap: 16,
+                alignItems: 'start',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowContext(!showContext)}
+                  className="mono"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--mut)',
+                    fontSize: 13,
+                    letterSpacing: '.08em',
+                    padding: 0,
+                    textAlign: 'left',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {showContext ? '− hide assignment context' : '+ optional context (assignment / topic)'}
+                </button>
+                {showContext && (
+                  <div style={{ marginTop: 14 }}>
+                    <input
+                      type="text"
+                      value={context}
+                      onChange={(e) => setContext(e.target.value)}
+                      placeholder='e.g. "Topic: climate justice" or assignment brief'
+                      style={{
+                        width: '100%',
+                        maxWidth: 560,
+                        padding: '14px 16px',
+                        borderRadius: 10,
+                        border: '1px solid var(--line-strong)',
+                        background: 'var(--bg-2)',
+                        color: 'var(--fg)',
+                        fontSize: 15,
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <p className="mono" style={{ marginTop: 10, fontSize: 12, color: 'var(--mut2)' }}>
+                      Helps tailor synthesis and citations to your course or paper.
+                    </p>
                   </div>
                 )}
 
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                {error && (
+                  <div
+                    className="card"
+                    style={{
+                      marginTop: 18,
+                      padding: 18,
+                      borderColor: 'var(--hot)',
+                      background: 'color-mix(in srgb, var(--hot) 8%, var(--card))',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: 15, color: 'var(--fg)' }}>{error}</p>
+                  </div>
+                )}
+              </div>
+
+              {showContextHintArrow && (
+                <div
+                  aria-hidden
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    alignSelf: 'center',
+                    pointerEvents: 'none',
+                  }}
                 >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      Generating Smart Analysis...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                      Get Smart Analysis
-                    </>
-                  )}
+                  <CompareHintArrow width={124} />
+                </div>
+              )}
+
+              <TipCard
+                size="comfortable"
+                style={{ width: '100%', justifySelf: 'stretch' }}
+                title={
+                  <>
+                    <span style={{ fontStyle: 'italic' }}>tip:</span> add context when the comparison is for a specific
+                    assignment or literature review.
+                  </>
+                }
+                subtitle="Use the field above when it’s relevant."
+              />
+            </div>
+          ) : (
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ minWidth: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowContext(!showContext)}
+                  className="mono"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--mut)',
+                    fontSize: 13,
+                    letterSpacing: '.08em',
+                    padding: 0,
+                    textAlign: 'left',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {showContext ? '− hide assignment context' : '+ optional context (assignment / topic)'}
                 </button>
-              </form>
-            </div>
-          </div>
+                {showContext && (
+                  <div style={{ marginTop: 14 }}>
+                    <input
+                      type="text"
+                      value={context}
+                      onChange={(e) => setContext(e.target.value)}
+                      placeholder='e.g. "Topic: climate justice" or assignment brief'
+                      style={{
+                        width: '100%',
+                        padding: '14px 16px',
+                        borderRadius: 10,
+                        border: '1px solid var(--line-strong)',
+                        background: 'var(--bg-2)',
+                        color: 'var(--fg)',
+                        fontSize: 15,
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <p className="mono" style={{ marginTop: 10, fontSize: 12, color: 'var(--mut2)' }}>
+                      Helps tailor synthesis and citations to your course or paper.
+                    </p>
+                  </div>
+                )}
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* How it Works */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <span className="mr-2">🎓</span>
-                Perfect for Students
-              </h3>
-              <div className="space-y-3">
-                <div className="flex items-start">
-                  <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold mr-3 mt-0.5">1</span>
-                  <div>
-                    <p className="text-sm text-gray-700"><strong>Add Context:</strong> Tell us your assignment topic or course focus</p>
+                {error && (
+                  <div
+                    className="card"
+                    style={{
+                      marginTop: 18,
+                      padding: 18,
+                      borderColor: 'var(--hot)',
+                      background: 'color-mix(in srgb, var(--hot) 8%, var(--card))',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: 15, color: 'var(--fg)' }}>{error}</p>
                   </div>
-                </div>
-                <div className="flex items-start">
-                  <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold mr-3 mt-0.5">2</span>
-                  <div>
-                    <p className="text-sm text-gray-700"><strong>Compare Articles:</strong> URLs or paste text directly</p>
-                  </div>
-                </div>
-                <div className="flex items-start">
-                  <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold mr-3 mt-0.5">3</span>
-                  <div>
-                    <p className="text-sm text-gray-700"><strong>Get Smart Analysis:</strong> Tables, insights, and essay help</p>
-                  </div>
-                </div>
+                )}
               </div>
-            </div>
 
-            {/* Student Success Tips */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <span className="mr-2">💡</span>
-                Pro Tips for Students
-              </h3>
-              <div className="space-y-3">
-                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="font-medium text-blue-900 text-sm">📚 Literature Reviews</div>
-                  <div className="text-xs text-blue-700 mt-1">
-                    Use context: "Assignment: literature review on climate policy"
-                  </div>
+              {showContextHintArrow && (
+                <div
+                  aria-hidden
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    pointerEvents: 'none',
+                    margin: '-4px 0',
+                  }}
+                >
+                  <CompareHintArrow
+                    width={Math.min(288, typeof window !== 'undefined' ? window.innerWidth - 48 : 260)}
+                  />
                 </div>
-                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                  <div className="font-medium text-green-900 text-sm">🔬 Methodology Papers</div>
-                  <div className="text-xs text-green-700 mt-1">
-                    Use context: "Course: Research Methods - comparing approaches"
-                  </div>
-                </div>
-                <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <div className="font-medium text-purple-900 text-sm">📝 Essay Writing</div>
-                  <div className="text-xs text-purple-700 mt-1">
-                    Use context: "Topic: social media impact on democracy"
-                  </div>
-                </div>
-              </div>
-            </div>
+              )}
 
-            {/* Features */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <span className="mr-2">✨</span>
-                What You'll Get
-              </h3>
-              <div className="space-y-2">
-                <div className="flex items-center text-sm text-gray-700">
-                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Side-by-side analysis
-                </div>
-                <div className="flex items-center text-sm text-gray-700">
-                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Methodology comparison
-                </div>
-                <div className="flex items-center text-sm text-gray-700">
-                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Findings alignment
-                </div>
-                <div className="flex items-center text-sm text-gray-700">
-                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Data visualizations
-                </div>
-                <div className="flex items-center text-sm text-gray-700">
-                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Synthesis insights
-                </div>
-              </div>
+              <TipCard
+                size="comfortable"
+                style={{ width: '100%' }}
+                title={
+                  <>
+                    <span style={{ fontStyle: 'italic' }}>tip:</span> add context when the comparison is for a specific
+                    assignment or literature review.
+                  </>
+                }
+                subtitle="Use the field above when it’s relevant."
+              />
             </div>
-          </div>
-        </div>
-      </div>
+          )}
+        </form>
+      </main>
     </div>
   );
 };
 
-export default ComparisonPage; 
+export default ComparisonPage;

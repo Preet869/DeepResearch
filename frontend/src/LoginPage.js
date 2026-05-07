@@ -1,11 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { config, BETA_SIGNUP_FULL_MESSAGE } from './config';
+import { Icon, HandArrow, Wordmark } from './components/shared';
+
+// Field component moved outside to prevent re-creation on each render
+const Field = ({ label, type = 'text', placeholder, value, onChange, disabled }) => {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span className="mono" style={{ fontSize: 12, color: 'var(--mut)', letterSpacing: '.16em', textTransform: 'uppercase' }}>
+        {label}
+      </span>
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        disabled={disabled}
+        style={{
+          padding: '15px 18px', borderRadius: 12,
+          border: '1px solid var(--line-strong)',
+          background: 'var(--card)', color: 'var(--fg)',
+          fontFamily: 'Geist, sans-serif', fontSize: 16, outline: 'none'
+        }}
+      />
+    </label>
+  );
+};
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -13,6 +40,7 @@ const LoginPage = () => {
   const [betaSignupStatus, setBetaSignupStatus] = useState('loading'); // loading | open | full | error
   const { signUp, signIn } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     let cancelled = false;
@@ -32,10 +60,18 @@ const LoginPage = () => {
       }
     };
     load();
+    
+    // Check for success message from password reset
+    if (location.state?.message) {
+      setMessage(location.state.message);
+      // Clear the state to prevent the message from persisting on refresh
+      navigate(location.pathname, { replace: true });
+    }
+    
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [location, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,13 +79,52 @@ const LoginPage = () => {
     setMessage('');
     setLoading(true);
     
+    // Basic validation
+    if (!email.trim()) {
+      setError('Email is required');
+      setLoading(false);
+      return;
+    }
+    
+    if (!password.trim()) {
+      setError('Password is required');
+      setLoading(false);
+      return;
+    }
+
+    // Validation for sign up
+    if (isSignUp) {
+      if (!firstName.trim()) {
+        setError('First name is required');
+        setLoading(false);
+        return;
+      }
+      if (!lastName.trim()) {
+        setError('Last name is required');
+        setLoading(false);
+        return;
+      }
+    }
+    
     try {
       if (isSignUp) {
-        const { error } = await signUp({ email, password });
+        const { error } = await signUp({ 
+          email, 
+          password, 
+          options: {
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim()
+            }
+          }
+        });
         if (error) throw error;
         setMessage('Check your email for a confirmation link!');
       } else {
-        const { error } = await signIn({ email, password });
+        const { error } = await signIn({ 
+          email: email.trim().toLowerCase(), 
+          password: password.trim() 
+        });
         if (error) throw error;
         navigate('/dashboard');
       }
@@ -60,191 +135,298 @@ const LoginPage = () => {
     }
   };
 
+
+  // Custom TopNav for auth page (without Get started button)
+  const AuthTopNav = () => {
+    const links = [
+      { id: 'welcome', label: 'Home' },
+      { id: 'auth', label: 'Sign in' }
+    ];
+
+    const go = (route) => {
+      if (route === 'welcome') {
+        navigate('/');
+      } else if (route === 'auth') {
+        navigate('/login');
+      }
+    };
+
+    return (
+      <header style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '20px 36px', borderBottom: '1px solid var(--line)',
+        position: 'sticky', top: 0, zIndex: 50,
+        background: 'color-mix(in srgb, var(--bg) 88%, transparent)',
+        backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)'
+      }}>
+        <div onClick={() => go('welcome')} style={{ cursor: 'pointer' }}>
+          <Wordmark />
+        </div>
+
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+          {links.map((l) =>
+            <button key={l.id} onClick={() => go(l.id)} className="mono"
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: l.id === 'auth' ? 'var(--fg)' : 'var(--mut)',
+                fontSize: 16, padding: '15px 24px', borderRadius: 8,
+                fontFamily: 'JetBrains Mono, monospace',
+                textTransform: 'lowercase', letterSpacing: '.02em',
+                position: 'relative'
+              }}>
+              {l.label}
+              {l.id === 'auth' &&
+                <span style={{
+                  position: 'absolute', left: 12, right: 12, bottom: 4, height: 2,
+                  background: 'var(--violet)', borderRadius: 2, backgroundColor: "rgb(242, 129, 29)"
+                }} />
+              }
+            </button>
+          )}
+        </nav>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Empty div to maintain spacing - no Get started button on auth page */}
+          <div style={{ width: '120px' }}></div>
+        </div>
+      </header>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        {/* Logo and Branding */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">DeepResearch</h1>
-          <p className="text-gray-600 text-center max-w-sm">
+    <div className="route dot-paper" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <AuthTopNav />
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+      {/* LEFT — editorial poster */}
+        <div className="auth-left-panel" style={{
+          padding: '40px 70px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+          borderRight: '1px solid var(--line)', position: 'relative', overflow: 'hidden'
+        }}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
+          <span className="sticker"><span className="dot-2" /> chapter one</span>
+          <span className="sticker"><span className="dot-3" /> beta Trial</span>
+          <h2 className="serif" style={{
+            fontSize: 'clamp(60px, 7.5vw, 110px)', lineHeight: .95, letterSpacing: '-.025em',
+            margin: '30px 0 0'
+          }}>
+            Welcome <span style={{ fontStyle: 'italic' }} className="squiggle">back</span>,<br />
+            researcher.
+          </h2>
+          <p className="auth-welcome-text" style={{ marginTop: 28, maxWidth: 525, fontSize: 20, lineHeight: 1.55, color: 'var(--mut)' }}>
             {isSignUp 
-              ? 'Create your account to start conducting AI-powered research with data visualizations'
-              : 'Welcome back! Sign in to continue your research journey'
+              ? 'Begin your research journey with AI-powered insights and data visualizations. Your new chapter starts here.'
+              : 'Pick up where you left off, or start a fresh thread of inquiry. Your library is exactly where you parked it.'
             }
           </p>
         </div>
+
+        {/* decorative annotated card */}
+        <div className="auth-decorative-card" style={{ position: 'relative', marginTop: 50 }}>
+          <div className="card" style={{
+            padding: 22, transform: 'rotate(-2deg)', maxWidth: 475,
+            background: 'var(--paper)'
+          }}>
+            <div className="mono" style={{ fontSize: 12, color: 'var(--mut2)', letterSpacing: '.18em' }}>TODAY'S NOTE</div>
+            <div className="serif" style={{ fontSize: 30, lineHeight: 1.15, marginTop: 8, letterSpacing: '-.01em' }}>
+              "The right question is half the <span className="marker">answer</span>."
+            </div>
+            <div className="mono" style={{ marginTop: 15, fontSize: 14, color: 'var(--mut)' }}>— charles kettering, 1944</div>
+          </div>
+          <div style={{ position: 'absolute', right: 65, top: -10 }}>
+            <HandArrow rotate={150} color="var(--cyan)" />
+          </div>
+        </div>
       </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-xl rounded-2xl border border-gray-100 sm:px-10">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 text-center">
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </h2>
+      {/* RIGHT — form */}
+        <div className="auth-right-panel" style={{ padding: '40px 70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '100%', maxWidth: 475 }}>
+          {/* mode switcher */}
+          <div style={{
+            display: 'inline-flex', padding: 4, borderRadius: 999,
+            background: 'var(--card)', border: '1px solid var(--line-strong)',
+            marginBottom: 28
+          }}>
+            {[
+              { mode: false, label: 'sign in' },
+              { mode: true, label: 'create account' }
+            ].map(({ mode, label }) =>
+              <button key={label}                 onClick={() => {
+                setIsSignUp(mode);
+                setError('');
+                setMessage('');
+                setFirstName('');
+                setLastName('');
+              }}
+              className="mono"
+              disabled={loading || betaSignupStatus === 'loading'}
+              style={{
+                padding: '10px 20px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                background: isSignUp === mode ? 'rgb(242, 129, 29)' : 'transparent',
+                color: isSignUp === mode ? 'white' : 'var(--mut)',
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 14, letterSpacing: '.02em'
+              }}>
+                {label}
+              </button>
+            )}
           </div>
 
+          <h3 className="serif" style={{ fontSize: 45, lineHeight: 1.1, margin: 0, letterSpacing: '-.015em' }}>
+            {isSignUp ? <>Begin a new <span style={{ fontStyle: 'italic' }}>chapter</span>.</> : <>Open the <span style={{ fontStyle: 'italic' }}>library</span>.</>}
+          </h3>
+
+          {/* Error Messages */}
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center">
-                <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-red-700 text-sm">{error}</p>
-              </div>
+            <div style={{ 
+              marginTop: 20, padding: '12px 16px', borderRadius: 8,
+              background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
+              color: '#dc2626'
+            }}>
+              <p className="mono" style={{ fontSize: 12, margin: 0 }}>{error}</p>
             </div>
           )}
 
+          {/* Success Messages */}
           {message && (
-            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center">
-                <svg className="w-5 h-5 text-green-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-green-700 text-sm">{message}</p>
-              </div>
+            <div style={{ 
+              marginTop: 20, padding: '12px 16px', borderRadius: 8,
+              background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)',
+              color: '#16a34a'
+            }}>
+              <p className="mono" style={{ fontSize: 12, margin: 0 }}>{message}</p>
             </div>
           )}
 
+          {/* Beta Signup Full Message */}
           {isSignUp && betaSignupStatus === 'full' && (
-            <div className="mb-6 p-6 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl shadow-sm">
-              <div className="flex flex-col items-center text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-                  <svg className="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">Beta is full</h3>
-                <p className="text-gray-700 text-sm leading-relaxed max-w-sm">{BETA_SIGNUP_FULL_MESSAGE}</p>
-                <p className="text-xs text-gray-500">You can still sign in if you already have an account.</p>
-              </div>
+            <div style={{ 
+              marginTop: 20, padding: '20px', borderRadius: 12,
+              background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)',
+              textAlign: 'center'
+            }}>
+              <h4 className="serif" style={{ fontSize: 18, margin: '0 0 8px', color: 'var(--fg)' }}>Beta is full</h4>
+              <p style={{ fontSize: 14, margin: '0 0 8px', color: 'var(--mut)', lineHeight: 1.4 }}>
+                {BETA_SIGNUP_FULL_MESSAGE}
+              </p>
+              <p className="mono" style={{ fontSize: 10, margin: 0, color: 'var(--mut2)', letterSpacing: '.02em' }}>
+                You can still sign in if you already have an account.
+              </p>
             </div>
           )}
 
+          {/* Beta Signup Error */}
           {isSignUp && betaSignupStatus === 'error' && (
-            <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-amber-900 text-sm">
-                We couldn&apos;t confirm whether signups are open. Please try again in a moment.
+            <div style={{ 
+              marginTop: 20, padding: '12px 16px', borderRadius: 8,
+              background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)',
+              color: '#d97706'
+            }}>
+              <p className="mono" style={{ fontSize: 12, margin: 0 }}>
+                We couldn't confirm whether signups are open. Please try again in a moment.
               </p>
             </div>
           )}
 
           {!(isSignUp && betaSignupStatus === 'full') && (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Email address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading || (isSignUp && betaSignupStatus === 'error')}
-                />
-              </div>
+            <form onSubmit={handleSubmit}
+            style={{ marginTop: 26, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {isSignUp && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <Field 
+                    label="First Name" 
+                    type="text" 
+                    placeholder="Hamza" 
+                    value={firstName} 
+                    onChange={setFirstName}
+                    disabled={loading || (isSignUp && betaSignupStatus === 'error')}
+                  />
+                  <Field 
+                    label="Last Name" 
+                    type="text" 
+                    placeholder="Ali Mazari" 
+                    value={lastName} 
+                    onChange={setLastName}
+                    disabled={loading || (isSignUp && betaSignupStatus === 'error')}
+                  />
+                </div>
+              )}
+              <Field 
+                label="Email" 
+                type="email" 
+                placeholder="exmaple@email.com" 
+                value={email} 
+                onChange={setEmail}
+                disabled={loading || (isSignUp && betaSignupStatus === 'error')}
+              />
+              <Field 
+                label="Password" 
+                type="password" 
+                placeholder={isSignUp ? "at least 6 characters" : "enter your password"}
+                value={password} 
+                onChange={setPassword}
+                disabled={loading || (isSignUp && betaSignupStatus === 'error')}
+              />
 
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete={isSignUp ? "new-password" : "current-password"}
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  placeholder={isSignUp ? "Create a password" : "Enter your password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading || (isSignUp && betaSignupStatus === 'error')}
-                />
-                {isSignUp && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Password should be at least 6 characters long
-                  </p>
-                )}
-              </div>
+              {isSignUp && (
+                <p className="mono" style={{ fontSize: 10, color: 'var(--mut2)', margin: '4px 0 0', letterSpacing: '.02em' }}>
+                  Password should be at least 6 characters long
+                </p>
+              )}
 
-              <button
-                type="submit"
-                disabled={
-                  loading ||
-                  (isSignUp && (betaSignupStatus === 'error' || betaSignupStatus === 'loading'))
-                }
-                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              {!isSignUp && (
+                <div style={{ textAlign: 'right', marginTop: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/forgot-password')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--mut)',
+                      fontSize: '12px',
+                      fontFamily: 'JetBrains Mono, monospace',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      letterSpacing: '.02em'
+                    }}
+                  >
+                    Forgot your password?
+                  </button>
+                </div>
+              )}
+
+              <button 
+                type="submit" 
+                className="btn btn-primary" 
+                disabled={loading || (isSignUp && (betaSignupStatus === 'error' || betaSignupStatus === 'loading'))}
+                style={{ 
+                  marginTop: 10, justifyContent: 'center', padding: '18px 22px', 
+                  backgroundColor: "rgb(242, 129, 29)",
+                  opacity: (loading || (isSignUp && (betaSignupStatus === 'error' || betaSignupStatus === 'loading'))) ? 0.6 : 1,
+                  fontSize: '16px'
+                }}
               >
                 {loading ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    <div style={{ 
+                      width: 16, height: 16, border: '2px solid white', borderTop: '2px solid transparent', 
+                      borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: 8
+                    }} />
                     {isSignUp ? 'Creating Account...' : 'Signing In...'}
                   </>
                 ) : (
                   <>
-                    {isSignUp ? (
-                      <>
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                        </svg>
-                        Create Account
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                        </svg>
-                        Sign In
-                      </>
-                    )}
+                    {isSignUp ? 'Create Account' : 'Sign In'} <Icon.Arrow />
                   </>
                 )}
               </button>
             </form>
           )}
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  {isSignUp ? 'Already have an account?' : "Don't have an account?"}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setError('');
-                  setMessage('');
-                }}
-                disabled={loading || betaSignupStatus === 'loading'}
-                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
-              >
-                {isSignUp ? 'Sign in to existing account' : 'Create new account'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-8 text-center">
-          <p className="text-sm text-gray-600">
-            Secure authentication powered by Supabase
+          <p className="mono" style={{ marginTop: 28, fontSize: 13, color: 'var(--mut2)', letterSpacing: '.02em', textAlign: 'center' }}>
+            by continuing you agree to our terms · privacy
           </p>
         </div>
+      </div>
       </div>
     </div>
   );

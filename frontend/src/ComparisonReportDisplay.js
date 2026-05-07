@@ -1,26 +1,43 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { jsPDF } from 'jspdf';
 import ChartDisplay from './ChartDisplay';
+import { FrameDivider, Icon } from './components/shared';
+import { PaperHeader, ContrastBar } from './components/compare';
+import { extractComparativeOverviewTableRows } from './components/compare/parseComparisonTable';
+
+function shortenTitle(t, max = 52) {
+  if (!t || !String(t).trim()) return 'Untitled';
+  const s = String(t).trim();
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+const FOCUS_LABEL = {
+  overall: 'Overall',
+  methodology: 'Methodology',
+  findings: 'Findings',
+};
 
 const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
-  const [activeTab, setActiveTab] = useState('comparison'); // comparison, article1, article2
+  const navigate = useNavigate();
   const [copiedSection, setCopiedSection] = useState(null);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showContext, setShowContext] = useState(false);
+  const [showClassicChart, setShowClassicChart] = useState(false);
 
   if (!messages || messages.length === 0) {
     return null;
   }
 
-  const mainReport = messages.find(m => m.role === 'assistant');
+  const mainReport = messages.find((m) => m.role === 'assistant');
   if (!mainReport) {
     return null;
   }
 
-  const isComparisonReport = mainReport.metadata?.comparison_type === 'article_comparison';
   const comparisonSummary = mainReport.metadata?.graph_data?.comparison_summary;
+  const graphData = mainReport.metadata?.graph_data;
 
   const copyToClipboard = async (text, sectionName) => {
     try {
@@ -33,25 +50,25 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
   };
 
   const parseComparisonSections = (content) => {
-    const sections = [];
+    const sec = [];
     const lines = content.split('\n');
     let currentSection = null;
     let sectionIndex = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      
+
       if (line.startsWith('## ')) {
         if (currentSection) {
-          sections.push(currentSection);
+          sec.push(currentSection);
         }
         currentSection = {
           id: `section-${sectionIndex}`,
           title: line.replace('## ', ''),
           content: [],
-          icon: getSectionIcon(line.replace('## ', ''))
+          icon: getSectionIcon(line.replace('## ', '')),
         };
-        sectionIndex++;
+        sectionIndex += 1;
       } else if (line.startsWith('### ')) {
         if (currentSection) {
           currentSection.content.push(`**${line.replace('### ', '')}**`);
@@ -62,10 +79,10 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
     }
 
     if (currentSection) {
-      sections.push(currentSection);
+      sec.push(currentSection);
     }
 
-    return sections;
+    return sec;
   };
 
   const getSectionIcon = (title) => {
@@ -80,9 +97,9 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
       'Synthesis and Integration': '🔗',
       'Critical Assessment': '⚖️',
       'Recommendations for Further Research': '🚀',
-      'Conclusion': '✅'
+      Conclusion: '✅',
     };
-    
+
     for (const [key, icon] of Object.entries(iconMap)) {
       if (title.toLowerCase().includes(key.toLowerCase())) return icon;
     }
@@ -90,7 +107,57 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
   };
 
   const sections = parseComparisonSections(mainReport.content);
-  const hasChart = mainReport.metadata && mainReport.metadata.graph_data;
+  const hasChart = Boolean(mainReport.metadata && mainReport.metadata.graph_data);
+  const tableRowsRaw = extractComparativeOverviewTableRows(sections);
+  const tableRows = tableRowsRaw.filter((r) => {
+    if (!r.key || r.key === '—') return r.va || r.vb;
+    return true;
+  });
+
+  const fallbackTableRows = () => {
+    if (tableRows.length) return [];
+    const out = [];
+    if (comparisonSummary?.similarity_score != null) {
+      out.push({
+        key: 'Similarity (AI)',
+        va: `${comparisonSummary.similarity_score}%`,
+        vb: '—',
+      });
+    }
+    (comparisonSummary?.key_differences || []).slice(0, 5).forEach((d, i) => {
+      out.push({ key: `Contrast ${i + 1}`, va: '—', vb: String(d) });
+    });
+    return out;
+  };
+  const attrRows = tableRows.length ? tableRows : fallbackTableRows();
+
+  const executiveSection = sections.find((s) => s.title.toLowerCase().includes('executive summary'));
+  const verdictBody = (() => {
+    if (graphData?.key_insight) return graphData.key_insight;
+    if (executiveSection?.content?.length) {
+      const first = executiveSection.content.find(
+        (line) =>
+          String(line).trim().startsWith('•') ||
+          String(line).trim().startsWith('-') ||
+          String(line).trim().startsWith('*')
+      );
+      if (first) {
+        return String(first)
+          .replace(/^[\s•\-*]+/, '')
+          .trim();
+      }
+      return executiveSection.content.slice(0, 2).join(' ').trim();
+    }
+    if (comparisonSummary?.key_differences?.[0]) {
+      return comparisonSummary.key_differences[0];
+    }
+    return 'Comparison complete — see the breakdown below.';
+  })();
+
+  const title1 = mainReport.metadata?.article1_title || 'Article 1';
+  const title2 = mainReport.metadata?.article2_title || 'Article 2';
+  const focusRaw = mainReport.metadata?.comparison_focus || 'overall';
+  const focusShort = FOCUS_LABEL[focusRaw] || focusRaw;
 
   const exportToPDF = () => {
     const MM_MARGIN = 20;
@@ -141,13 +208,11 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
           `Page ${i} of ${total}`,
           pageW() / 2,
           pageH() - 10,
-          { align: 'center', baseline: 'middle' },
+          { align: 'center', baseline: 'middle' }
         );
       }
     };
 
-    const title1 = mainReport.metadata?.article1_title || 'Article 1';
-    const title2 = mainReport.metadata?.article2_title || 'Article 2';
     const bodyText = String(mainReport.content || '').trim();
 
     doc.setFont('helvetica', 'bold');
@@ -212,21 +277,19 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
     doc.save('article-comparison-report.pdf');
   };
 
-  // Enhanced granular export functions
   const copyExecutiveSummary = () => {
-    const execSection = sections.find(s => s.title.toLowerCase().includes('executive summary'));
+    const execSection = sections.find((s) => s.title.toLowerCase().includes('executive summary'));
     if (execSection) {
       copyToClipboard(execSection.content.join('\n'), 'Executive Summary');
     }
   };
 
   const copyComparisonTable = () => {
-    const overviewSection = sections.find(s => s.title.toLowerCase().includes('comparative overview'));
+    const overviewSection = sections.find((s) => s.title.toLowerCase().includes('comparative overview'));
     if (overviewSection) {
-      // Extract table content if it exists
-      const tableContent = overviewSection.content.find(line => line.includes('|'));
-      if (tableContent) {
-        const tableLines = overviewSection.content.filter(line => line.includes('|') || line.includes('---'));
+      const hasPipe = overviewSection.content.some((line) => line.includes('|'));
+      if (hasPipe) {
+        const tableLines = overviewSection.content.filter((line) => line.includes('|') || line.includes('---'));
         copyToClipboard(tableLines.join('\n'), 'Comparison Table');
       } else {
         copyToClipboard(overviewSection.content.join('\n'), 'Comparative Overview');
@@ -242,13 +305,13 @@ const ComparisonReportDisplay = ({ messages, isLoading, onFollowUp }) => {
 **Similarity Score:** ${comparisonSummary.similarity_score}%
 
 **Key Differences:**
-${comparisonSummary.key_differences?.map(d => `• ${d}`).join('\n') || 'None listed'}
+${comparisonSummary.key_differences?.map((d) => `• ${d}`).join('\n') || 'None listed'}
 
 **Complementary Areas:**
-${comparisonSummary.complementary_areas?.map(a => `• ${a}`).join('\n') || 'None listed'}
+${comparisonSummary.complementary_areas?.map((a) => `• ${a}`).join('\n') || 'None listed'}
 
 **Conflicting Areas:**
-${comparisonSummary.conflicting_areas?.map(a => `• ${a}`).join('\n') || 'None listed'}
+${comparisonSummary.conflicting_areas?.map((a) => `• ${a}`).join('\n') || 'None listed'}
 
 ${comparisonSummary.student_recommendation ? `**Student Recommendation:** ${comparisonSummary.student_recommendation}` : ''}
 
@@ -258,441 +321,800 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
     }
   };
 
-  // Helper function to format follow-up queries with comparison context
   const formatFollowUpQuery = (userQuery) => {
     const article1Title = mainReport.metadata?.article1_title || 'Article 1';
     const article2Title = mainReport.metadata?.article2_title || 'Article 2';
-    
+
     const contextPrefix = `I just compared two articles:
 - Article 1: ${article1Title}
 - Article 2: ${article2Title}
 
 My question about this comparison: `;
-    
+
     return contextPrefix + userQuery;
   };
 
-  const ComparisonSummaryCard = () => {
-    if (!comparisonSummary) return null;
+  const barData = graphData?.data;
+  const barGrid =
+    Array.isArray(barData) && barData.length
+      ? barData.map((row) => {
+          const a = Number(row.value);
+          const b = Number(row.value2);
+          const maxV = Math.max(10, a, b, 1);
+          return {
+            label: row.name || 'Metric',
+            a: Number.isFinite(a) ? a : 0,
+            b: Number.isFinite(b) ? b : 0,
+            amax: maxV,
+          };
+        })
+      : [];
 
-    return (
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <span className="mr-2">📊</span>
-          Smart Comparison Summary
-        </h3>
-        
-        {/* Context Display */}
-        {mainReport.metadata?.context && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center">
-                <span className="mr-2">🎯</span>
-                <span className="font-medium text-gray-900">Context</span>
-              </div>
+  return (
+    <div style={{ padding: '40px 36px 80px', color: 'var(--fg)' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="mono"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--mut)',
+            fontSize: 11,
+            letterSpacing: '.06em',
+            marginBottom: 18,
+            padding: 0,
+          }}
+        >
+          ← library
+        </button>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <span
+              className="mono"
+              style={{
+                fontSize: 11,
+                color: 'var(--cyan)',
+                letterSpacing: '.2em',
+                textTransform: 'uppercase',
+              }}
+            >
+              ✱ comparison · {focusShort}
+            </span>
+            <h1
+              className="serif"
+              style={{
+                fontSize: 'clamp(40px, 5.4vw, 72px)',
+                lineHeight: 0.98,
+                letterSpacing: '-.02em',
+                margin: '8px 0 0',
+              }}
+            >
+              {shortenTitle(title1, 44)}{' '}
+              <span style={{ fontStyle: 'italic', color: 'var(--mut2)' }}>vs.</span>{' '}
+              {shortenTitle(title2, 44)}
+            </h1>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => navigate('/compare')}
+              className="btn btn-ghost"
+              style={{ padding: '8px 12px', fontSize: 13 }}
+            >
+              Re-run
+            </button>
+            <div style={{ position: 'relative' }}>
               <button
-                onClick={() => setShowContext(!showContext)}
-                className="flex items-center text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                title={showContext ? "Hide context" : "Show context"}
+                type="button"
+                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                className="btn btn-ghost"
+                style={{ padding: '8px 12px', fontSize: 13 }}
               >
-                <svg className={`w-3 h-3 mr-1 transition-transform ${showContext ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                {showContext ? 'Hide' : 'Show'}
+                <Icon.Download /> Export
+              </button>
+              {showExportDropdown && (
+                <div
+                  className="card"
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    marginTop: 6,
+                    minWidth: 200,
+                    zIndex: 30,
+                    padding: 4,
+                    boxShadow: '0 12px 40px -12px rgba(0,0,0,.2)',
+                  }}
+                >
+                  <div
+                    className="mono"
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: 10,
+                      color: 'var(--mut2)',
+                      letterSpacing: '.12em',
+                    }}
+                  >
+                    FULL DOCUMENT
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportToPDF();
+                      setShowExportDropdown(false);
+                    }}
+                    className="mono"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      color: 'var(--fg)',
+                      borderRadius: 6,
+                    }}
+                  >
+                    Export PDF
+                  </button>
+                  <div
+                    className="mono"
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: 10,
+                      color: 'var(--mut2)',
+                      letterSpacing: '.12em',
+                      borderTop: '1px solid var(--line)',
+                    }}
+                  >
+                    COPY SECTIONS
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      copyExecutiveSummary();
+                      setShowExportDropdown(false);
+                    }}
+                    className="mono"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      color: 'var(--fg)',
+                      borderRadius: 6,
+                    }}
+                  >
+                    Executive Summary
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      copyComparisonTable();
+                      setShowExportDropdown(false);
+                    }}
+                    className="mono"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      color: 'var(--fg)',
+                      borderRadius: 6,
+                    }}
+                  >
+                    Comparison Table
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      copySummaryCard();
+                      setShowExportDropdown(false);
+                    }}
+                    className="mono"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      color: 'var(--fg)',
+                      borderRadius: 6,
+                    }}
+                  >
+                    Summary Card
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {mainReport.metadata?.context && (
+          <div className="card" style={{ marginTop: 20, padding: 16, background: 'var(--card)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span className="mono" style={{ fontSize: 11, letterSpacing: '.14em', color: 'var(--mut)' }}>
+                YOUR CONTEXT
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowContext(!showContext)}
+                className="mono"
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  color: 'var(--cyan)',
+                }}
+              >
+                {showContext ? 'hide' : 'show'}
               </button>
             </div>
             {showContext && (
-              <p className="text-sm text-gray-700">{mainReport.metadata.context}</p>
+              <p style={{ margin: '10px 0 0', fontSize: 15, lineHeight: 1.5, color: 'var(--fg)' }}>
+                {mainReport.metadata.context}
+              </p>
             )}
           </div>
         )}
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Similarity Score</span>
-                <span className="text-lg font-bold text-blue-600">{comparisonSummary.similarity_score}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${comparisonSummary.similarity_score}%` }}
-                ></div>
-              </div>
-            </div>
-            
-            <div className="mb-4">
-              <h4 className="font-medium text-gray-900 mb-2">Key Differences</h4>
-              <ul className="space-y-1">
-                {comparisonSummary.key_differences?.map((diff, index) => (
-                  <li key={index} className="text-sm text-gray-700 flex items-start">
-                    <span className="text-red-500 mr-2">•</span>
-                    {diff}
-                  </li>
-                ))}
-              </ul>
-            </div>
+
+        {/* Verdict */}
+        <div
+          className="card"
+          style={{
+            marginTop: 28,
+            padding: 28,
+            background: 'var(--card)',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: -40,
+              right: -40,
+              width: 240,
+              height: 240,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, var(--violet) 0%, transparent 70%)',
+              opacity: 0.15,
+              pointerEvents: 'none',
+            }}
+          />
+          <div className="mono" style={{ fontSize: 11, color: 'var(--violet)', letterSpacing: '.18em' }}>
+            VERDICT
           </div>
-          
-          <div>
-            <div className="mb-4">
-              <h4 className="font-medium text-gray-900 mb-2">Complementary Areas</h4>
-              <ul className="space-y-1">
-                {comparisonSummary.complementary_areas?.map((area, index) => (
-                  <li key={index} className="text-sm text-gray-700 flex items-start">
-                    <span className="text-green-500 mr-2">•</span>
-                    {area}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-medium text-gray-900 mb-2">Conflicting Areas</h4>
-              <ul className="space-y-1">
-                {comparisonSummary.conflicting_areas?.map((area, index) => (
-                  <li key={index} className="text-sm text-gray-700 flex items-start">
-                    <span className="text-orange-500 mr-2">•</span>
-                    {area}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* New Smart Features */}
-        {(comparisonSummary.student_recommendation || comparisonSummary.citation_strategy) && (
-          <div className="mt-6 pt-4 border-t border-blue-200">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {comparisonSummary.student_recommendation && (
-                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                  <h4 className="font-medium text-green-900 mb-1 flex items-center">
-                    <span className="mr-1">🎓</span>
-                    Student Recommendation
-                  </h4>
-                  <p className="text-sm text-green-800">{comparisonSummary.student_recommendation}</p>
-                </div>
-              )}
-              {comparisonSummary.citation_strategy && (
-                <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <h4 className="font-medium text-purple-900 mb-1 flex items-center">
-                    <span className="mr-1">📚</span>
-                    Citation Strategy
-                  </h4>
-                  <p className="text-sm text-purple-800">{comparisonSummary.citation_strategy}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const ArticleMetadataCard = ({ title, subtitle, color = 'blue' }) => (
-    <div className={`bg-${color}-50 border border-${color}-200 rounded-lg p-4`}>
-      <h4 className={`font-semibold text-${color}-900 mb-1`}>{title}</h4>
-      <p className={`text-sm text-${color}-700`}>{subtitle}</p>
-    </div>
-  );
-
-  return (
-    <div className="max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-              <span className="mr-3">⚖️</span>
-              Article Comparison Analysis
-            </h1>
-                         <p className="text-gray-600 mt-1">
-               Comprehensive comparative analysis with data insights
-             </p>
-           </div>
-           <div className="flex items-center space-x-4">
-             <div className="text-sm text-gray-500">
-               Generated {new Date(mainReport.created_at || Date.now()).toLocaleDateString()}
-             </div>
-             
-             {/* Export Button */}
-             <div className="relative">
-               <button
-                 onClick={() => setShowExportDropdown(!showExportDropdown)}
-                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                 title="Export Options"
-               >
-                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                 </svg>
-               </button>
-               
-               {showExportDropdown && (
-                 <div className="absolute right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-52 z-20">
-                   {/* Full Document Exports */}
-                   <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
-                     Full Document
-                   </div>
-                   <button
-                     onClick={() => {
-                       exportToPDF();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">📄</span>
-                     Export PDF
-                   </button>
-                   
-                   {/* Granular Exports */}
-                   <div className="px-3 py-2 text-xs font-medium text-gray-500 border-t border-gray-100 mt-1">
-                     Copy Sections
-                   </div>
-                   <button
-                     onClick={() => {
-                       copyExecutiveSummary();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">📋</span>
-                     Executive Summary
-                   </button>
-                   <button
-                     onClick={() => {
-                       copyComparisonTable();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">📊</span>
-                     Comparison Table
-                   </button>
-                   <button
-                     onClick={() => {
-                       copySummaryCard();
-                       setShowExportDropdown(false);
-                     }}
-                     className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center text-sm"
-                   >
-                     <span className="mr-2">💡</span>
-                     Summary Card
-                   </button>
-                 </div>
-               )}
-             </div>
-           </div>
-        </div>
-
-        {/* Article Metadata */}
-        {isComparisonReport && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <ArticleMetadataCard 
-              title={mainReport.metadata.article1_title || 'Article 1'}
-              subtitle="First Article"
-              color="blue"
-            />
-            <ArticleMetadataCard 
-              title={mainReport.metadata.article2_title || 'Article 2'}
-              subtitle="Second Article"
-              color="green"
-            />
-          </div>
-        )}
-
-        {/* Comparison Summary */}
-        <ComparisonSummaryCard />
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('comparison')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'comparison'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+          <div
+            className="serif comparison-md"
+            style={{
+              marginTop: 8,
+              fontSize: 30,
+              lineHeight: 1.2,
+              letterSpacing: '-.015em',
+              maxWidth: 880,
+              position: 'relative',
+            }}
           >
-            Comparison Analysis
-          </button>
-          <button
-            onClick={() => setActiveTab('visualization')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'visualization'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Data Visualization
-          </button>
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        {activeTab === 'comparison' && (
-          <div className="p-8">
-            <div className="space-y-8">
-              {sections.map((section, index) => (
-                <section key={section.id} className="border-b border-gray-100 pb-8 last:border-b-0">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-gray-900 flex items-center">
-                      <span className="mr-3 text-2xl">{section.icon}</span>
-                      {section.title}
-                    </h2>
-                    <button
-                      onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
-                      className="text-gray-400 hover:text-gray-600 p-2 rounded-md hover:bg-gray-100 transition-colors"
-                      title="Copy section"
-                    >
-                      {copiedSection === section.title ? (
-                        <span className="text-green-500">✓</span>
-                      ) : (
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                  <div className="prose prose-lg max-w-none text-gray-700 leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {section.content.join('\n')}
-                    </ReactMarkdown>
-                  </div>
-                </section>
-              ))}
-            </div>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{verdictBody}</ReactMarkdown>
           </div>
-        )}
-
-        {activeTab === 'visualization' && (
-          <div className="p-8">
-            {hasChart ? (
-              <>
-                <ChartDisplay graphData={mainReport.metadata.graph_data} />
-                <p
+          {comparisonSummary?.similarity_score != null && (
+            <div style={{ marginTop: 16, maxWidth: 400 }}>
+              <div className="mono" style={{ fontSize: 10, color: 'var(--mut2)', letterSpacing: '.12em' }}>
+                SIMILARITY (AI)
+              </div>
+              <div style={{ marginTop: 6, height: 8, background: 'var(--bg-2)', borderRadius: 4, overflow: 'hidden' }}>
+                <div
                   style={{
-                    fontSize: '12px',
-                    color: '#6b7280',
-                    fontStyle: 'italic',
-                    marginTop: '12px',
+                    width: `${Math.min(100, Math.max(0, comparisonSummary.similarity_score))}%`,
+                    height: '100%',
+                    background: 'var(--violet)',
+                    opacity: 0.85,
+                    transition: 'width .4s',
+                  }}
+                />
+              </div>
+              <span className="mono" style={{ fontSize: 12, color: 'var(--mut)' }}>
+                {comparisonSummary.similarity_score}%
+              </span>
+            </div>
+          )}
+          {comparisonSummary && (
+            <div
+              style={{
+                marginTop: 20,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 16,
+                position: 'relative',
+              }}
+            >
+              {comparisonSummary.key_differences?.length ? (
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--mut2)', letterSpacing: '.12em' }}>
+                    KEY DIFFERENCES
+                  </div>
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 14, color: 'var(--fg)' }}>
+                    {comparisonSummary.key_differences.slice(0, 4).map((d, i) => (
+                      <li key={i} style={{ marginBottom: 4 }}>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {comparisonSummary.complementary_areas?.length ? (
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--mut2)', letterSpacing: '.12em' }}>
+                    COMPLEMENTARY
+                  </div>
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 14, color: 'var(--fg)' }}>
+                    {comparisonSummary.complementary_areas.slice(0, 4).map((d, i) => (
+                      <li key={i} style={{ marginBottom: 4 }}>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {comparisonSummary.conflicting_areas?.length ? (
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--mut2)', letterSpacing: '.12em' }}>
+                    CONFLICTS
+                  </div>
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 14, color: 'var(--fg)' }}>
+                    {comparisonSummary.conflicting_areas.slice(0, 4).map((d, i) => (
+                      <li key={i} style={{ marginBottom: 4 }}>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        {/* Side-by-side table */}
+        <div style={{ marginTop: 32, overflowX: 'auto' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(120px, 200px) minmax(140px, 1fr) minmax(140px, 1fr)',
+              gap: 0,
+              minWidth: 560,
+            }}
+          >
+            <div />
+            <PaperHeader letter="A" tint="var(--violet)" title={shortenTitle(title1, 36)} sub="Paper A" />
+            <PaperHeader letter="B" tint="var(--cyan)" title={shortenTitle(title2, 36)} sub="Paper B" />
+            {attrRows.map((row, i) => (
+              <React.Fragment key={`${row.key}-${i}`}>
+                <div
+                  style={{
+                    padding: '20px 16px',
+                    borderTop: '1px solid var(--line)',
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 11,
+                    color: 'var(--mut2)',
+                    letterSpacing: '.14em',
+                    textTransform: 'uppercase',
                   }}
                 >
-                  Scores are AI-assessed based on article content and represent relative
-                  comparisons, not absolute quality metrics.
-                </p>
+                  {row.key}
+                </div>
+                <div
+                  style={{
+                    padding: '20px 20px',
+                    borderTop: '1px solid var(--line)',
+                    borderLeft: '1px solid var(--line)',
+                    fontSize: 15,
+                    lineHeight: 1.5,
+                    color: 'var(--fg)',
+                  }}
+                >
+                  {row.va}
+                </div>
+                <div
+                  style={{
+                    padding: '20px 20px',
+                    borderTop: '1px solid var(--line)',
+                    borderLeft: '1px solid var(--line)',
+                    fontSize: 15,
+                    lineHeight: 1.5,
+                    color: 'var(--fg)',
+                  }}
+                >
+                  {row.vb}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        <FrameDivider label="Outcomes at a glance" />
+        <div className="card" style={{ padding: 24, background: 'var(--card)' }}>
+          {barGrid.length ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 18,
+              }}
+            >
+              {barGrid.map((row) => (
+                <ContrastBar
+                  key={row.label}
+                  label={row.label}
+                  a={row.a}
+                  b={row.b}
+                  amax={row.amax}
+                />
+              ))}
+            </div>
+          ) : (
+            <p style={{ margin: 0, color: 'var(--mut)', fontSize: 15 }}>
+              No scored criteria in this report. The model may omit chart data for very short inputs.
+            </p>
+          )}
+          <p
+            style={{
+              fontSize: 12,
+              color: 'var(--mut)',
+              fontStyle: 'italic',
+              marginTop: 16,
+              marginBottom: 0,
+            }}
+          >
+            Scores are AI-assessed from the article excerpts you provided — useful for relative comparison, not absolute
+            quality.
+          </p>
+          {hasChart && (
+            <div style={{ marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={() => setShowClassicChart(!showClassicChart)}
+                className="mono"
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--cyan)',
+                  fontSize: 12,
+                  letterSpacing: '.06em',
+                  padding: 0,
+                }}
+              >
+                {showClassicChart ? '− hide bar chart' : '+ classic bar chart view'}
+              </button>
+              {showClassicChart && (
+                <div style={{ marginTop: 16 }}>
+                  <ChartDisplay graphData={graphData} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <FrameDivider label="What you should cite" />
+        <div className="card" style={{ padding: 26, background: 'var(--card)' }}>
+          <div
+            className="serif comparison-md"
+            style={{
+              fontSize: 22,
+              lineHeight: 1.3,
+              maxWidth: 880,
+            }}
+          >
+            {comparisonSummary?.student_recommendation || comparisonSummary?.citation_strategy ? (
+              <>
+                {comparisonSummary?.student_recommendation ? (
+                  <div style={{ marginBottom: comparisonSummary?.citation_strategy ? 16 : 0 }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {comparisonSummary.student_recommendation}
+                    </ReactMarkdown>
+                  </div>
+                ) : null}
+                {comparisonSummary?.citation_strategy ? (
+                  <div>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {comparisonSummary.citation_strategy}
+                    </ReactMarkdown>
+                  </div>
+                ) : null}
               </>
             ) : (
-              <div className="text-center py-12">
-                <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Visualization Available</h3>
-                <p className="text-gray-600">This comparison report doesn't include data visualizations.</p>
-              </div>
+              <p style={{ margin: 0 }}>
+                Use the executive summary and comparative overview to decide which source supports each claim in
+                your paper.
+              </p>
             )}
           </div>
-        )}
-      </div>
-
-      {/* Smart Student Tools */}
-      <div className="mt-8 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl p-6 border border-green-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <span className="mr-2">🎓</span>
-          Smart Student Tools
-        </h3>
-        
-        {/* Interactive Enhancement Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <button
-            onClick={() => {
-              const contextPrompt = mainReport.metadata?.context 
-                ? `Based on the context "${mainReport.metadata.context}", generate a sample essay introduction paragraph that incorporates both articles from this comparison.`
-                : "Generate a sample essay introduction paragraph that incorporates both articles from this comparison.";
-              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-            }}
-            className="p-4 bg-white rounded-lg border-2 border-green-300 hover:border-green-400 hover:bg-green-50 transition-colors text-left"
-          >
-            <div className="font-medium text-gray-900 flex items-center">
-              <span className="mr-2">💡</span>
-              Essay Help
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Generate sample intro + comparison paragraph</div>
-          </button>
-
-          <button
-            onClick={() => {
-              const contextPrompt = mainReport.metadata?.context 
-                ? `Based on the context "${mainReport.metadata.context}" and this article comparison, generate 3 smart research questions that could guide further investigation.`
-                : "Based on this article comparison, generate 3 smart research questions that could guide further investigation.";
-              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-            }}
-            className="p-4 bg-white rounded-lg border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
-          >
-            <div className="font-medium text-gray-900 flex items-center">
-              <span className="mr-2">🎯</span>
-              Research Questions
-            </div>
-            <div className="text-sm text-gray-600 mt-1">3 smart, citation-backed questions to explore</div>
-          </button>
-
-          <button
-            onClick={() => {
-              const contextPrompt = mainReport.metadata?.context 
-                ? `Highlight and explain the matching concepts between both articles that are relevant to "${mainReport.metadata.context}".`
-                : "Highlight and explain the matching concepts and themes that appear in both articles.";
-              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-            }}
-            className="p-4 bg-white rounded-lg border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-colors text-left"
-          >
-            <div className="font-medium text-gray-900 flex items-center">
-              <span className="mr-2">📌</span>
-              Matching Concepts
-            </div>
-            <div className="text-sm text-gray-600 mt-1">Auto-highlight shared topics and themes</div>
-          </button>
         </div>
 
-        {/* Standard Follow-up Actions */}
-        <h4 className="font-medium text-gray-900 mb-3">Additional Analysis</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <button
-            onClick={() => {
-              const contextPrompt = mainReport.metadata?.context 
-                ? `What are the practical implications of these article differences for "${mainReport.metadata.context}"?`
-                : "What are the practical implications of these differences?";
-              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
+        <FrameDivider label="Full analysis" />
+        <div className="card" style={{ padding: '24px 28px 32px', background: 'var(--card)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+            {sections.map((section) => (
+              <section key={section.id}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  <h2
+                    className="serif"
+                    style={{
+                      margin: 0,
+                      fontSize: 26,
+                      letterSpacing: '-.02em',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span style={{ fontSize: 24 }}>{section.icon}</span>
+                    {section.title}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(section.content.join('\n'), section.title)}
+                    title="Copy section"
+                    className="mono"
+                    style={{
+                      flexShrink: 0,
+                      border: '1px solid var(--line)',
+                      background: 'var(--bg-2)',
+                      cursor: 'pointer',
+                      borderRadius: 8,
+                      padding: '6px 10px',
+                      fontSize: 11,
+                      color: 'var(--mut)',
+                    }}
+                  >
+                    {copiedSection === section.title ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <div
+                  style={{
+                    fontSize: 16,
+                    lineHeight: 1.65,
+                    color: 'var(--fg)',
+                  }}
+                  className="comparison-md"
+                >
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {section.content.join('\n')}
+                  </ReactMarkdown>
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+
+        <FrameDivider label="Smart follow-ups" />
+        <div className="card" style={{ padding: 24, background: 'var(--card)' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 12,
+              marginBottom: 20,
             }}
-            className="p-3 text-left bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
           >
-            <div className="font-medium text-gray-900">Practical Implications</div>
-            <div className="text-xs text-gray-600 mt-1">Explore real-world applications</div>
-          </button>
-          <button
-            onClick={() => {
-              const contextPrompt = mainReport.metadata?.context 
-                ? `How should I cite both articles effectively for "${mainReport.metadata.context}"?`
-                : "How should I cite both articles effectively in my work?";
-              onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-            }}
-            className="p-3 text-left bg-white rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+            <button
+              type="button"
+              onClick={() => {
+                const contextPrompt = mainReport.metadata?.context
+                  ? `Based on the context "${mainReport.metadata.context}", generate a sample essay introduction paragraph that incorporates both articles from this comparison.`
+                  : 'Generate a sample essay introduction paragraph that incorporates both articles from this comparison.';
+                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
+              }}
+              className="btn btn-ghost"
+              style={{
+                position: 'relative',
+                overflow: 'hidden',
+                alignItems: 'flex-start',
+                textAlign: 'left',
+                padding: 14,
+                height: 'auto',
+                minHeight: 72,
+              }}
+            >
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: 4,
+                  height: '100%',
+                  background: 'var(--hot)',
+                }}
+              />
+              <span
+                className="serif"
+                style={{ fontSize: 17, display: 'block', marginBottom: 4, color: 'var(--fg)', position: 'relative' }}
+              >
+                Essay help
+              </span>
+              <span className="mono" style={{ fontSize: 11, color: 'var(--mut)', position: 'relative' }}>
+                Sample intro weaving both sources
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const contextPrompt = mainReport.metadata?.context
+                  ? `Based on the context "${mainReport.metadata.context}" and this article comparison, generate 3 smart research questions that could guide further investigation.`
+                  : 'Based on this article comparison, generate 3 smart research questions that could guide further investigation.';
+                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
+              }}
+              className="btn btn-ghost"
+              style={{
+                position: 'relative',
+                overflow: 'hidden',
+                alignItems: 'flex-start',
+                textAlign: 'left',
+                padding: 14,
+                height: 'auto',
+                minHeight: 72,
+              }}
+            >
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: 4,
+                  height: '100%',
+                  background: 'var(--cyan)',
+                }}
+              />
+              <span
+                className="serif"
+                style={{ fontSize: 17, display: 'block', marginBottom: 4, color: 'var(--fg)', position: 'relative' }}
+              >
+                Research questions
+              </span>
+              <span className="mono" style={{ fontSize: 11, color: 'var(--mut)', position: 'relative' }}>
+                Three citation-grounded next steps
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const contextPrompt = mainReport.metadata?.context
+                  ? `Highlight and explain the matching concepts between both articles that are relevant to "${mainReport.metadata.context}".`
+                  : 'Highlight and explain the matching concepts and themes that appear in both articles.';
+                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
+              }}
+              className="btn btn-ghost"
+              style={{
+                position: 'relative',
+                overflow: 'hidden',
+                alignItems: 'flex-start',
+                textAlign: 'left',
+                padding: 14,
+                height: 'auto',
+                minHeight: 72,
+              }}
+            >
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: 4,
+                  height: '100%',
+                  background: 'var(--sun)',
+                }}
+              />
+              <span
+                className="serif"
+                style={{ fontSize: 17, display: 'block', marginBottom: 4, color: 'var(--fg)', position: 'relative' }}
+              >
+                Matching concepts
+              </span>
+              <span className="mono" style={{ fontSize: 11, color: 'var(--mut)', position: 'relative' }}>
+                Shared themes across papers
+              </span>
+            </button>
+          </div>
+          <div
+            className="mono"
+            style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--mut2)', marginBottom: 10 }}
           >
-            <div className="font-medium text-gray-900">Citation Strategy</div>
-            <div className="text-xs text-gray-600 mt-1">Best practices for referencing both</div>
-          </button>
+            ADDITIONAL ANALYSIS
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => {
+                const contextPrompt = mainReport.metadata?.context
+                  ? `What are the practical implications of these article differences for "${mainReport.metadata.context}"?`
+                  : 'What are the practical implications of these differences?';
+                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
+              }}
+              className="btn btn-ghost"
+              style={{ justifyContent: 'flex-start', textAlign: 'left', padding: 12 }}
+            >
+              Practical implications
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const contextPrompt = mainReport.metadata?.context
+                  ? `How should I cite both articles effectively for "${mainReport.metadata.context}"?`
+                  : 'How should I cite both articles effectively in my work?';
+                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
+              }}
+              className="btn btn-ghost"
+              style={{ justifyContent: 'flex-start', textAlign: 'left', padding: 12 }}
+            >
+              Citation strategy (deeper)
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Loading State */}
       {isLoading && (
-        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-lg border border-gray-200 px-6 py-4 flex items-center space-x-4">
-          <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500"></div>
-          <div className="text-sm">
-            <p className="font-medium text-gray-900">Generating follow-up analysis...</p>
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 96,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--card)',
+            borderRadius: 10,
+            border: '1px solid var(--line)',
+            padding: '12px 20px',
+            zIndex: 40,
+            boxShadow: '0 12px 40px -12px rgba(0,0,0,.2)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 18,
+                height: 18,
+                border: '2px solid var(--line-strong)',
+                borderTopColor: 'var(--violet)',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }}
+            />
+            <span className="mono" style={{ fontSize: 13, color: 'var(--fg)' }}>
+              Generating follow-up…
+            </span>
           </div>
         </div>
       )}
@@ -700,4 +1122,4 @@ My question about this comparison: `;
   );
 };
 
-export default ComparisonReportDisplay; 
+export default ComparisonReportDisplay;

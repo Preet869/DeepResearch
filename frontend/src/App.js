@@ -5,6 +5,9 @@ import Dashboard from './Dashboard';
 import ResearchPage from './ResearchPage';
 import ComparisonPage from './ComparisonPage';
 import LoginPage from './LoginPage';
+import ForgotPasswordPage from './ForgotPasswordPage';
+import ResetPasswordPage from './ResetPasswordPage';
+import Welcome from './components/Welcome';
 import DebugInfo from './DebugInfo';
 import './App.css';
 
@@ -14,6 +17,11 @@ const SHOW_DEBUG_PANEL = false;
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();
   return user ? children : <Navigate to="/login" />;
+};
+
+const PublicRoute = ({ children }) => {
+  const { user } = useAuth();
+  return user ? <Navigate to="/dashboard" /> : children;
 };
 
 const AdminRoute = ({ children }) => {
@@ -60,14 +68,33 @@ function App() {
       <Router>
         {SHOW_DEBUG_PANEL && process.env.NODE_ENV === 'development' && <DebugInfo />}
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
           <Route 
             path="/" 
             element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
+              <PublicRoute>
+                <Welcome />
+              </PublicRoute>
             } 
+          />
+          <Route 
+            path="/login" 
+            element={
+              <PublicRoute>
+                <LoginPage />
+              </PublicRoute>
+            } 
+          />
+          <Route 
+            path="/forgot-password" 
+            element={
+              <PublicRoute>
+                <ForgotPasswordPage />
+              </PublicRoute>
+            } 
+          />
+          <Route 
+            path="/reset-password" 
+            element={<ResetPasswordPage />} 
           />
           <Route 
             path="/dashboard" 
