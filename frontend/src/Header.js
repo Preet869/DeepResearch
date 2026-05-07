@@ -78,7 +78,6 @@ function Header() {
           padding: '12px 18px',
           borderRadius: 8,
           letterSpacing: '.08em',
-          textTransform: 'lowercase',
           position: 'relative',
           fontFamily: 'JetBrains Mono, monospace',
         }}
@@ -113,7 +112,6 @@ function Header() {
             padding: '12px 18px',
             borderRadius: 8,
             letterSpacing: '.08em',
-            textTransform: 'lowercase',
             position: 'relative',
             fontFamily: 'JetBrains Mono, monospace',
             color: active ? 'var(--fg)' : 'var(--mut2)',
@@ -122,7 +120,7 @@ function Header() {
             userSelect: 'none',
           }}
         >
-          research
+          Research
           {active && (
             <span
               style={{
@@ -139,7 +137,7 @@ function Header() {
         </span>
       );
     }
-    return navItem('/research', 'research', { accentResearch: true });
+    return navItem('/research', 'Research', { accentResearch: true });
   };
 
   return (
@@ -198,9 +196,9 @@ function Header() {
             transform: 'translateX(-50%)',
           }}
         >
-          {navItem('/dashboard', 'library')}
+          {navItem('/dashboard', 'Library')}
           {navResearch()}
-          {isAdmin && navItem('/compare', 'compare')}
+          {isAdmin && navItem('/compare', 'Compare')}
         </nav>
       )}
 
@@ -274,7 +272,7 @@ function Header() {
           </div>
         ) : (
           <Link to="/login" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-            Sign in
+            Sign In
           </Link>
         )}
       </div>

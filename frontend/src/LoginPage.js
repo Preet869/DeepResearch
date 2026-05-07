@@ -28,6 +28,51 @@ const Field = ({ label, type = 'text', placeholder, value, onChange, disabled })
   );
 };
 
+function betaSpotsStickerLabel(betaSignupStatus, seats) {
+  if (betaSignupStatus === 'loading') return 'spots · …';
+  if (betaSignupStatus === 'error') return '50 seat cap';
+  const lim = typeof seats.limit === 'number' && seats.limit > 0 ? seats.limit : 50;
+  if (
+    seats.degraded ||
+    seats.spotsRemaining == null ||
+    typeof seats.signupOpen !== 'boolean'
+  ) {
+    return `${lim} seat cap`;
+  }
+  if (!seats.signupOpen) {
+    return `full · ${lim} spots`;
+  }
+  return `${seats.spotsRemaining} / ${lim} left`;
+}
+
+function betaSpotsStickerDotColor(betaSignupStatus, seats) {
+  const yellow = '#ffd23f';
+  const green = '#22c55e';
+  const red = '#ef4345';
+
+  if (betaSignupStatus === 'loading') return yellow;
+  if (betaSignupStatus === 'error') return yellow;
+
+  const lim = typeof seats.limit === 'number' && seats.limit > 0 ? seats.limit : null;
+  const spots = typeof seats.spotsRemaining === 'number' ? seats.spotsRemaining : null;
+
+  if (
+    seats.degraded ||
+    lim == null ||
+    spots == null ||
+    typeof seats.signupOpen !== 'boolean'
+  ) {
+    return yellow;
+  }
+
+  if (!seats.signupOpen || spots <= 15) return red;
+
+  const registered = lim - spots;
+  if (registered >= 30) return yellow;
+
+  return green;
+}
+
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,6 +83,12 @@ const LoginPage = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [betaSignupStatus, setBetaSignupStatus] = useState('loading'); // loading | open | full | error
+  const [betaSeats, setBetaSeats] = useState({
+    signupOpen: null,
+    spotsRemaining: null,
+    limit: null,
+    degraded: false,
+  });
   const { signUp, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,6 +105,13 @@ const LoginPage = () => {
         const data = await res.json();
         if (!cancelled) {
           setBetaSignupStatus(data.signup_open ? 'open' : 'full');
+          setBetaSeats({
+            signupOpen: typeof data.signup_open === 'boolean' ? data.signup_open : null,
+            spotsRemaining:
+              typeof data.spots_remaining === 'number' ? data.spots_remaining : null,
+            limit: typeof data.limit === 'number' ? data.limit : null,
+            degraded: Boolean(data.degraded),
+          });
         }
       } catch {
         if (!cancelled) setBetaSignupStatus('error');
@@ -140,7 +198,7 @@ const LoginPage = () => {
   const AuthTopNav = () => {
     const links = [
       { id: 'welcome', label: 'Home' },
-      { id: 'auth', label: 'Sign in' }
+      { id: 'auth', label: 'Sign In' }
     ];
 
     const go = (route) => {
@@ -171,7 +229,7 @@ const LoginPage = () => {
                 color: l.id === 'auth' ? 'var(--fg)' : 'var(--mut)',
                 fontSize: 16, padding: '15px 24px', borderRadius: 8,
                 fontFamily: 'JetBrains Mono, monospace',
-                textTransform: 'lowercase', letterSpacing: '.02em',
+                letterSpacing: '.02em',
                 position: 'relative'
               }}>
               {l.label}
@@ -202,9 +260,18 @@ const LoginPage = () => {
           padding: '40px 70px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
           borderRight: '1px solid var(--line)', position: 'relative', overflow: 'hidden'
         }}>
-        <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
-          <span className="sticker"><span className="dot-2" /> chapter one</span>
-          <span className="sticker"><span className="dot-3" /> beta Trial</span>
+        <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 28 }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="sticker"><span className="dot-2" /> chapter one</span>
+            <span className="sticker"><span className="dot-3" /> beta Trial</span>
+            <span className="sticker">
+              <span
+                className="dot-4"
+                style={{ background: betaSpotsStickerDotColor(betaSignupStatus, betaSeats) }}
+              />
+              {betaSpotsStickerLabel(betaSignupStatus, betaSeats)}
+            </span>
+          </div>
           <h2 className="serif" style={{
             fontSize: 'clamp(60px, 7.5vw, 110px)', lineHeight: .95, letterSpacing: '-.025em',
             margin: '30px 0 0'

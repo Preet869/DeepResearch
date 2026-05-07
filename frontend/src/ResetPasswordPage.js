@@ -124,7 +124,7 @@ const ResetPasswordPage = () => {
   const ResetPasswordTopNav = () => {
     const links = [
       { id: 'welcome', label: 'Home' },
-      { id: 'auth', label: 'Sign in' }
+      { id: 'auth', label: 'Sign In' }
     ];
 
     const go = (route) => {
@@ -155,7 +155,7 @@ const ResetPasswordPage = () => {
                 color: 'var(--mut)',
                 fontSize: 16, padding: '15px 24px', borderRadius: 8,
                 fontFamily: 'JetBrains Mono, monospace',
-                textTransform: 'lowercase', letterSpacing: '.02em',
+                letterSpacing: '.02em',
                 position: 'relative'
               }}>
               {l.label}

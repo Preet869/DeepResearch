@@ -1294,43 +1294,69 @@ def _beta_user_limit() -> int:
         return 50
 
 
-def _auth_user_count_at_least(min_count: int) -> bool:
-    """Return True if there are at least min_count registered auth users."""
+def _count_auth_users() -> int:
+    """Total users in Supabase Auth (paginated Admin API).
+
+    Beta cap uses this — not rows in application tables."""
     total = 0
     page = 1
-    per_page = max(100, min_count)
-    while total < min_count:
-        users = supabase.auth.admin.list_users(page=page, per_page=per_page)
-        batch = len(users)
-        total += batch
-        if total >= min_count:
-            return True
-        if batch < per_page:
-            return False
+    per_page = 200
+    while True:
+        batch = supabase.auth.admin.list_users(page=page, per_page=per_page)
+        n = len(batch)
+        total += n
+        if n < per_page:
+            break
         page += 1
-    return True
+    return total
 
 
 @app.get("/beta-signup-status")
 async def beta_signup_status():
-    """Public endpoint: whether new email/password signups are still allowed (beta cap)."""
+    """Public endpoint: whether new email/password signups are still allowed (beta cap).
+
+    Counts Supabase Auth users via admin ``list_users`` (same source as the cap).
+
+    Fields:
+    - ``registered_count``: how many Auth users exist
+    - ``spots_remaining``: max(0, limit - registered_count)
+    """
     limit = _beta_user_limit()
     if not supabase:
         # Client needs SUPABASE_URL + SUPABASE_SERVICE_KEY; if only URL is set (mis-synced env),
         # avoid blocking the login UI with 503.
         if (os.getenv("SUPABASE_URL") or "").strip():
-            return {"signup_open": True, "limit": limit, "degraded": True}
+            return {
+                "signup_open": True,
+                "limit": limit,
+                "registered_count": None,
+                "spots_remaining": None,
+                "degraded": True,
+            }
         raise HTTPException(
             status_code=503,
             detail="Signup availability could not be checked. Please try again later.",
         )
     try:
-        full = _auth_user_count_at_least(limit)
-        return {"signup_open": not full, "limit": limit, "degraded": False}
+        registered = _count_auth_users()
+        spots = max(0, limit - registered)
+        return {
+            "signup_open": registered < limit,
+            "limit": limit,
+            "registered_count": registered,
+            "spots_remaining": spots,
+            "degraded": False,
+        }
     except Exception as e:
         logger.exception("beta_signup_status failed: %s", e)
         # Admin API (list_users) requires service_role; allow login UI to load if misconfigured.
-        return {"signup_open": True, "limit": limit, "degraded": True}
+        return {
+            "signup_open": True,
+            "limit": limit,
+            "registered_count": None,
+            "spots_remaining": None,
+            "degraded": True,
+        }
 
 
 @app.get("/health")
