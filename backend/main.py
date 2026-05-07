@@ -1119,36 +1119,35 @@ End with this JSON block:
 MONTHLY_REPORT_LIMIT = 5
 
 
-def _count_monthly_reports(user_id: str, db: Any) -> int:
-    """Count assistant messages produced for this user in the current calendar month."""
+def _lifetime_completed_report_threads(user_id: str, db: Any) -> int:
+    """How many of this user's conversations include at least one assistant message (counts imports regardless of ``created_at``)."""
     if not db:
         return 0
     uid = str(user_id)
     try:
-        from datetime import date
-        first_of_month = date.today().replace(day=1).isoformat()
-        # Supabase Python client doesn't support cross-table joins, so we fetch
-        # conversation IDs for the user first, then count matching messages.
-        convos_res = (
-            db.table("conversations")
-            .select("id")
-            .eq("user_id", uid)
-            .execute()
-        )
-        convo_ids = [row["id"] for row in (convos_res.data or [])]
-        if not convo_ids:
+        convos_res = db.table("conversations").select("id").eq("user_id", uid).execute()
+        convo_rows = convos_res.data or []
+        if not convo_rows:
             return 0
-        msg_res = (
-            db.table("messages")
-            .select("id", count="exact")
-            .eq("role", "assistant")
-            .gte("created_at", first_of_month)
-            .in_("conversation_id", convo_ids)
-            .execute()
-        )
-        return msg_res.count or 0
+        convo_ids = [row["id"] for row in convo_rows]
+        seen: set[Any] = set()
+        chunk_size = 150
+        for i in range(0, len(convo_ids), chunk_size):
+            chunk = convo_ids[i : i + chunk_size]
+            msg_res = (
+                db.table("messages")
+                .select("conversation_id")
+                .eq("role", "assistant")
+                .in_("conversation_id", chunk)
+                .execute()
+            )
+            for row in msg_res.data or []:
+                cid = row.get("conversation_id")
+                if cid is not None:
+                    seen.add(cid)
+        return len(seen)
     except Exception as e:
-        logger.warning("monthly report count failed: %s", e)
+        logger.warning("lifetime report thread count failed: %s", e)
         return 0
 
 
@@ -1217,6 +1216,47 @@ def _profile_role(user_id: str, db: Any) -> str:
 
 def _user_is_admin(user_id: str, db: Any) -> bool:
     return _profile_role(user_id, db) == "admin"
+
+
+def _get_reports_quota_locked(user_id: str, db: Any) -> bool:
+    """True if profiles.reports_quota_locked is set (beta quota exhausted — not cleared by deletes)."""
+    if not db:
+        return False
+    try:
+        res = (
+            db.table("profiles")
+            .select("reports_quota_locked")
+            .eq("id", str(user_id))
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        if not rows:
+            return False
+        return bool(rows[0].get("reports_quota_locked"))
+    except Exception as e:
+        logger.warning("profiles reports_quota_locked lookup failed for %s: %s", user_id, e)
+        return False
+
+
+def _set_reports_quota_locked(user_id: str, db: Any) -> None:
+    """Persist quota lock; best-effort only."""
+    if not db:
+        return
+    try:
+        db.table("profiles").update({"reports_quota_locked": True}).eq("id", str(user_id)).execute()
+    except Exception as e:
+        logger.warning("profiles reports_quota_locked update failed for %s: %s", user_id, e)
+
+
+def _evaluate_reports_quota(uid: str, db: Any) -> tuple[bool, int]:
+    """Returns ``(quota_locked, lifetime_completed_threads)``. Persists lock when non-admin hits cap."""
+    lifetime = _lifetime_completed_report_threads(uid, db)
+    locked = _get_reports_quota_locked(uid, db)
+    if not _user_is_admin(uid, db) and lifetime >= MONTHLY_REPORT_LIMIT:
+        _set_reports_quota_locked(uid, db)
+        locked = True
+    return locked, lifetime
 
 
 def _insert_usage_event(user_id: Optional[str], event_type: str, metadata: Dict) -> None:
@@ -1557,28 +1597,37 @@ async def delete_conversation(conversation_id: int, authorization: Annotated[Opt
 # =============================================================================
 @app.get("/usage")
 async def get_usage(authorization: Annotated[Optional[str], Header()] = None):
-    """Returns the user's report usage for the current calendar month."""
+    """Returns report quota usage (completed threads with an assistant reply). Non-admins can hit ``reports_quota_locked``."""
     try:
         user, token = await require_user_and_token(authorization)
         db = _db_for_access_token(token)
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
-        reports_used = _count_monthly_reports(_auth_uid(user), db)
         uid = _auth_uid(user)
         sources_cited_total = _total_sources_cited(uid, db)
         if _user_is_admin(uid, db):
+            lifetime_reports = _lifetime_completed_report_threads(uid, db)
+            quota_locked_flag = _get_reports_quota_locked(uid, db)
             return {
-                "reports_used": reports_used,
+                "reports_used": lifetime_reports,
                 "reports_limit": None,
                 "reports_remaining": None,
                 "is_admin": True,
+                "reports_quota_locked": quota_locked_flag,
                 "sources_cited_total": sources_cited_total,
             }
+        quota_locked, reports_used = _evaluate_reports_quota(uid, db)
+        remaining = (
+            0
+            if quota_locked
+            else max(0, MONTHLY_REPORT_LIMIT - reports_used)
+        )
         return {
             "reports_used": reports_used,
             "reports_limit": MONTHLY_REPORT_LIMIT,
-            "reports_remaining": max(0, MONTHLY_REPORT_LIMIT - reports_used),
+            "reports_remaining": remaining,
             "is_admin": False,
+            "reports_quota_locked": quota_locked,
             "sources_cited_total": sources_cited_total,
         }
     except HTTPException:
@@ -1630,21 +1679,25 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
         uid = _auth_uid(user)
-        reports_used = _count_monthly_reports(uid, db)
-        if not _user_is_admin(uid, db) and reports_used >= MONTHLY_REPORT_LIMIT:
+        quota_locked, lifetime_reports = _evaluate_reports_quota(uid, db)
+        if quota_locked:
             from datetime import date
 
-            _insert_usage_event(
-                uid,
-                "limit_reached",
-                {"reports_used": MONTHLY_REPORT_LIMIT, "day_of_month": date.today().day},
-            )
+            if lifetime_reports >= MONTHLY_REPORT_LIMIT:
+                _insert_usage_event(
+                    uid,
+                    "limit_reached",
+                    {
+                        "reports_used": lifetime_reports,
+                        "day_of_month": date.today().day,
+                        "reports_quota_locked": True,
+                    },
+                )
             raise HTTPException(
                 status_code=429,
                 detail=(
                     "You've reached the 5 report limit for our beta. "
-                    "We're limiting usage while we improve the platform. "
-                    "Check back next month for more free reports."
+                    "Deleting saved research does not restore new runs."
                 ),
             )
 
@@ -1747,6 +1800,8 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
             "metadata": metadata_json,
         }
         message_res = db.table("messages").insert(message_to_save).execute()
+
+        _evaluate_reports_quota(uid, db)
 
         response_time_ms = (time.time() - start) * 1000
         _insert_usage_event(

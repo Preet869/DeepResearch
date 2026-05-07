@@ -6,7 +6,7 @@ import { getUserFirstName } from './utils/userDisplayName';
 import { Wordmark } from './components/shared';
 
 function Header() {
-  const { user, signOut, isAdmin } = useAuth();
+  const { user, signOut, isAdmin, researchCreationBlocked } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -61,7 +61,8 @@ function Header() {
   const path = location.pathname;
   const headerDisplayName = user ? getUserFirstName(userProfile, user) : '';
 
-  const navItem = (to, label) => {
+  const navItem = (to, label, opts = {}) => {
+    const { accentResearch } = opts;
     const active =
       to === '/dashboard'
         ? path === '/dashboard'
@@ -92,12 +93,53 @@ function Header() {
               bottom: 4,
               height: 3,
               borderRadius: 2,
-              background: label === 'research' ? '#FEE092' : 'var(--violet)',
+              background: accentResearch ? '#FEE092' : 'var(--violet)',
             }}
           />
         )}
       </Link>
     );
+  };
+
+  const navResearch = () => {
+    const active = path === '/research' || path.startsWith('/research/');
+    if (researchCreationBlocked) {
+      return (
+        <span
+          className="mono"
+          title="At beta cap — deletes won&apos;t refill"
+          style={{
+            fontSize: 15,
+            padding: '12px 18px',
+            borderRadius: 8,
+            letterSpacing: '.08em',
+            textTransform: 'lowercase',
+            position: 'relative',
+            fontFamily: 'JetBrains Mono, monospace',
+            color: active ? 'var(--fg)' : 'var(--mut2)',
+            opacity: active ? 1 : 0.42,
+            cursor: 'not-allowed',
+            userSelect: 'none',
+          }}
+        >
+          research
+          {active && (
+            <span
+              style={{
+                position: 'absolute',
+                left: 10,
+                right: 10,
+                bottom: 4,
+                height: 3,
+                borderRadius: 2,
+                background: '#FEE092',
+              }}
+            />
+          )}
+        </span>
+      );
+    }
+    return navItem('/research', 'research', { accentResearch: true });
   };
 
   return (
@@ -157,7 +199,7 @@ function Header() {
           }}
         >
           {navItem('/dashboard', 'library')}
-          {navItem('/research', 'research')}
+          {navResearch()}
           {isAdmin && navItem('/compare', 'compare')}
         </nav>
       )}

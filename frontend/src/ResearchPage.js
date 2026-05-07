@@ -7,9 +7,10 @@ import CitationHelper from './components/CitationHelper';
 import Analytics from './components/Analytics';
 import ResearchLibrary from './components/ResearchLibrary';
 import { config } from './config';
-import { apiFetch, AUTH_REQUIRED } from './apiClient';
+import { apiFetch, AUTH_REQUIRED, getSupabaseAccessToken } from './apiClient';
 import analyticsService from './services/analyticsService';
 import { Icon, PIPELINE_STEP_DOT_COLORS, pipelineStepDotStyle } from './components/shared';
+import { useAuth } from './AuthContext';
 
 function IntroSettingPill({ icon, label }) {
   return (
@@ -50,8 +51,9 @@ function ResearchQueryComposer({
   formClassName = '',
   submitDisabled,
 }) {
+  const quotaLocked = submitDisabled === true;
   const disabled =
-    submitDisabled !== undefined ? submitDisabled : !String(value || '').trim() || loading;
+    loading || !String(value || '').trim() || quotaLocked;
 
   return (
     <form onSubmit={onSubmit} className={formClassName}>
@@ -70,7 +72,7 @@ function ResearchQueryComposer({
           autoFocus={autoFocus}
           rows={3}
           placeholder={placeholder}
-          disabled={loading}
+          disabled={loading || quotaLocked}
           className="placeholder:opacity-55"
           style={{
             width: '100%',
@@ -169,6 +171,7 @@ function ResearchQueryComposer({
 }
 
 const ResearchPage = () => {
+  const { researchCreationBlocked, refreshUsageQuota, usageQuota } = useAuth();
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -188,6 +191,19 @@ const ResearchPage = () => {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const t = await getSupabaseAccessToken();
+      if (!t || cancelled) return;
+      await refreshUsageQuota(t);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshUsageQuota]);
+
   const convoIdFromUrl = searchParams.get('convo_id');
   /** Immersive first step: no sidebar until the user sends a query (unless opening an existing conversation). */
   const showFullScreenIntro = messages.length === 0 && !convoIdFromUrl;
@@ -273,7 +289,7 @@ const ResearchPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!inputValue.trim() || loading) return;
+    if (researchCreationBlocked || !inputValue.trim() || loading) return;
 
     const startTime = Date.now();
     const queryText = inputValue.trim();
@@ -333,6 +349,8 @@ const ResearchPage = () => {
             data.sources || []
           );
         }
+        const t = await getSupabaseAccessToken();
+        if (t) await refreshUsageQuota(t);
       } else {
         throw new Error('Failed to get response');
       }
@@ -411,6 +429,7 @@ const ResearchPage = () => {
 
   const handleFollowUpSlotClick = (slot) => {
     const userMessages = messages.filter(m => m.role === 'user');
+    if (researchCreationBlocked && userMessages.length <= slot) return;
     if (userMessages.length > slot) {
       // If slot has content, navigate to it
       handleNodeSelect(slot);
@@ -444,7 +463,7 @@ const ResearchPage = () => {
 
   const handleFollowUpSubmit = (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    if (!customFollowUpQuery.trim() || loading) return;
+    if (researchCreationBlocked || !customFollowUpQuery.trim() || loading) return;
 
     setExpandedFollowUpSlot(null);
     handleAddFollowup(customFollowUpQuery);
@@ -457,7 +476,7 @@ const ResearchPage = () => {
   };
 
   const handleSubmitFollowup = async (query) => {
-    if (!query.trim() || loading) return;
+    if (researchCreationBlocked || !query.trim() || loading) return;
 
     setLoading(true);
     const userMessage = { role: 'user', content: query.trim() };
@@ -491,6 +510,8 @@ const ResearchPage = () => {
         if (data.new_messages && data.new_messages.length > 0) {
           setMessages(prev => [...prev, ...data.new_messages]);
         }
+        const t = await getSupabaseAccessToken();
+        if (t) await refreshUsageQuota(t);
       } else {
         throw new Error('Failed to get response');
       }
@@ -515,11 +536,15 @@ const ResearchPage = () => {
   };
 
   const handleFollowUp = (suggestion) => {
+    if (researchCreationBlocked) return;
     setInputValue(suggestion);
     handleSubmitFollowup(suggestion);
   };
 
   const userMessageCount = messages.filter((m) => m.role === 'user').length;
+  const betaDepthCap =
+    usageQuota.reports_limit != null ? Number(usageQuota.reports_limit) : 5;
+
   const showFollowUpSlotPanel =
     expandedFollowUpSlot !== null && userMessageCount < expandedFollowUpSlot + 1;
   /** Sidebar: original report row is "current" only when not composing a follow-up in another slot. */
@@ -570,15 +595,42 @@ const ResearchPage = () => {
                   structure, citations, charts.
                 </p>
 
-                <ResearchQueryComposer
-                  formClassName="mt-7"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onSubmit={handleSubmit}
-                  loading={loading}
-                  autoFocus
-                  placeholder="e.g. How are personalized neoantigen vaccines reshaping melanoma treatment outcomes?"
-                />
+                {researchCreationBlocked ? (
+                  <div
+                    className="mt-7 rounded-2xl border px-6 py-8"
+                    style={{
+                      background: 'var(--card)',
+                      borderColor: 'var(--line-strong)',
+                      maxWidth: 560,
+                    }}
+                  >
+                    <p className="serif text-xl" style={{ color: 'var(--fg)', margin: 0, lineHeight: 1.45 }}>
+                      That&apos;s{' '}
+                      <b style={{ color: 'var(--fg)' }}>
+                        {betaDepthCap} {betaDepthCap === 1 ? 'report' : 'reports'}
+                      </b>{' '}
+                      deep — beta cap. Deletes won&apos;t refill.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn-new-research mt-5"
+                      style={{ borderRadius: 9999 }}
+                      onClick={() => navigate('/dashboard')}
+                    >
+                      Back to library
+                    </button>
+                  </div>
+                ) : (
+                  <ResearchQueryComposer
+                    formClassName="mt-7"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onSubmit={handleSubmit}
+                    loading={loading}
+                    autoFocus
+                    placeholder="e.g. How are personalized neoantigen vaccines reshaping melanoma treatment outcomes?"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -906,12 +958,15 @@ const ResearchPage = () => {
                                   <button
                                     key={index}
                                     type="button"
+                                    disabled={researchCreationBlocked}
                                     onClick={() => handleSuggestedPromptSelect(prompt)}
                                     className="p-4 rounded-xl transition-colors text-left"
                                     style={{
                                       background: 'var(--paper)',
                                       border: '1px solid var(--line)',
                                       color: 'var(--fg)',
+                                      opacity: researchCreationBlocked ? 0.45 : 1,
+                                      cursor: researchCreationBlocked ? 'not-allowed' : 'pointer',
                                     }}
                                   >
                                     <div className="flex items-start gap-3">
@@ -943,6 +998,7 @@ const ResearchPage = () => {
                               onChange={(e) => setCustomFollowUpQuery(e.target.value)}
                               onSubmit={handleFollowUpSubmit}
                               loading={loading}
+                              submitDisabled={researchCreationBlocked}
                               placeholder="Enter your follow-up research question…"
                             />
                           </div>

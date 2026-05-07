@@ -21,7 +21,19 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
-const DASHBOARD_SESSION_CACHE_KEY = 'dr-dashboard-cache-v1';
+const DASHBOARD_SESSION_CACHE_KEY = 'dr-dashboard-cache-v2';
+
+function normalizeUsageFromApi(data) {
+  if (!data || typeof data !== 'object') return null;
+  return {
+    reports_used: Number(data.reports_used) || 0,
+    reports_limit: data.reports_limit == null ? null : Number(data.reports_limit),
+    reports_remaining: data.reports_remaining == null ? null : Number(data.reports_remaining),
+    is_admin: Boolean(data.is_admin),
+    reports_quota_locked: Boolean(data.reports_quota_locked),
+    sources_cited_total: Number(data.sources_cited_total) || 0,
+  };
+}
 
 // Icon components (simplified versions for the new design)
 const Icon = {
@@ -100,6 +112,49 @@ const DashboardTipCard = ({ style = {} }) => (
     }
     subtitle="A quick way to organise your workflow."
   />
+);
+
+/** Beta blurb below library search: bigger type, no second card — reads as helper copy. */
+const DashboardBetaSearchBlurb = () => (
+  <div>
+    <p
+      className="serif"
+      style={{
+        margin: 0,
+        fontSize: 'clamp(17px, 2.1vw, 23px)',
+        lineHeight: 1.38,
+        letterSpacing: '-0.01em',
+        fontWeight: 600,
+        color: 'var(--fg)',
+      }}
+    >
+      We&apos;re in{' '}
+      <span style={{ fontStyle: 'italic' }}>
+        <span className="marker-half" style={{ color: 'var(--fg)' }}>
+          beta
+        </span>
+      </span>{' '}
+      — so for now, everyone gets{' '}
+      <span style={{ fontStyle: 'italic' }}>
+        <span className="marker-half" style={{ color: 'var(--fg)' }}>
+          five
+        </span>
+      </span>
+      .
+    </p>
+    <p
+      className="serif"
+      style={{
+        margin: '10px 0 0',
+        fontSize: 'clamp(15px, 1.65vw, 18px)',
+        lineHeight: 1.45,
+        fontStyle: 'italic',
+        color: 'var(--mut)',
+      }}
+    >
+      Small batch, big ideas.
+    </p>
+  </div>
 );
 
 const DroppableFolderTarget = ({ dropId, children }) => {
@@ -329,6 +384,7 @@ const Dashboard = () => {
     reports_limit: 5,
     reports_remaining: 5,
     is_admin: false,
+    reports_quota_locked: false,
     sources_cited_total: 0,
   });
   const [userProfile, setUserProfile] = useState(null);
@@ -336,15 +392,46 @@ const Dashboard = () => {
   const [exportSelectedId, setExportSelectedId] = useState(null);
   const [exportBusy, setExportBusy] = useState(false);
 
-  const { token, user } = useAuth();
+  const { token, user, syncUsageQuotaFromApi, researchCreationBlocked, usageQuota } = useAuth();
   const navigate = useNavigate();
   const [dashboardStartTime] = useState(Date.now());
 
   const isAdminUser = Boolean(usage.is_admin);
-  const limitReached =
-    !isAdminUser &&
-    usage.reports_limit != null &&
-    usage.reports_used >= usage.reports_limit;
+
+  const profileRoleNorm =
+    userProfile?.role != null
+      ? String(userProfile.role).trim().toLowerCase()
+      : null;
+  /** Standard accounts see beta quota copy; admins are exempt. */
+  const showUserRoleReportLimitHeading =
+    !isAdminUser && profileRoleNorm !== 'admin';
+
+  const monthlyReportLimit =
+    usage.reports_limit != null ? Number(usage.reports_limit) : null;
+  /** Admin accounts omit ``reports_limit`` from API; use 5 for lock / beta copy fallback. */
+  const quotaCopyReportCap = monthlyReportLimit ?? 5;
+  const reportsNoun = (n) =>
+    n === 1 ? 'report' : 'reports';
+
+  /** Cap subtitle uses Auth quota only (never local ``usage`` defaults). */
+  const quotaHeadingLimit =
+    usageQuota.loaded && usageQuota.reports_limit != null
+      ? usageQuota.reports_limit
+      : quotaCopyReportCap;
+
+  /** Matches `/usage` + Auth — lock or threads at limit (not lagging Dashboard ``usage`` state). */
+  const quotaCapReachedFromApi =
+    usageQuota.loaded &&
+    (usageQuota.reports_quota_locked ||
+      (!usageQuota.is_admin &&
+        usageQuota.reports_limit != null &&
+        usageQuota.reports_used >= usageQuota.reports_limit));
+
+  const showQuotaCapSubtitle = quotaCapReachedFromApi;
+
+  /** Loaded admins who are not capped still see the unlimited line. */
+  const showAdminUnlimitedSubtitle =
+    usageQuota.loaded && usageQuota.is_admin && !quotaCapReachedFromApi;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -421,14 +508,16 @@ const Dashboard = () => {
       const response = await apiFetch(config.endpoints.usage, opts);
       if (response.ok) {
         const data = await response.json();
-        setUsage(data);
+        const next = normalizeUsageFromApi(data);
+        if (next) setUsage(next);
+        syncUsageQuotaFromApi(data);
       }
     } catch (error) {
       if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
         console.error('Error fetching usage:', error);
       }
     }
-  }, []);
+  }, [syncUsageQuotaFromApi]);
 
   const fetchData = useCallback(async (options = {}) => {
     const silent = options.silent === true;
@@ -445,7 +534,7 @@ const Dashboard = () => {
       if (supabase && uid) {
         const { data } = await supabase
           .from('profiles')
-          .select('first_name, full_name')
+          .select('first_name, full_name, role')
           .eq('id', uid)
           .maybeSingle();
         setUserProfile(data || null);
@@ -473,9 +562,6 @@ const Dashboard = () => {
           if (Array.isArray(p.folders)) setFolders(p.folders);
           if (Array.isArray(p.conversations)) setConversations(p.conversations);
           if (Array.isArray(p.allConversations)) setAllConversations(p.allConversations);
-          if (p.usage && typeof p.usage === 'object') {
-            setUsage((prev) => ({ ...prev, ...p.usage }));
-          }
           setLoading(false);
           restored = true;
         }
@@ -513,13 +599,37 @@ const Dashboard = () => {
           folders,
           conversations,
           allConversations,
-          usage,
         }),
       );
     } catch {
       /* quota / private mode */
     }
-  }, [loading, user?.id, folders, conversations, allConversations, usage]);
+  }, [loading, user?.id, folders, conversations, allConversations]);
+
+  /** Usage is not session-cached — refetch when library size changes (e.g. return from research). */
+  useEffect(() => {
+    if (!user?.id || loading) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const accessToken = await getSupabaseAccessToken();
+        if (!accessToken || cancelled) return;
+        const response = await apiFetch(config.endpoints.usage, { accessToken });
+        if (!response.ok || cancelled) return;
+        const data = await response.json();
+        const next = normalizeUsageFromApi(data);
+        if (next && !cancelled) setUsage(next);
+        if (!cancelled) syncUsageQuotaFromApi(data);
+      } catch (error) {
+        if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
+          console.error('Error refreshing usage:', error);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, loading, allConversations.length, syncUsageQuotaFromApi]);
 
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
@@ -826,6 +936,7 @@ const Dashboard = () => {
   };
 
   const startNewResearch = () => {
+    if (researchCreationBlocked) return;
     const params = new URLSearchParams();
     if (selectedFolder) {
       params.set('folder_id', selectedFolder.id);
@@ -838,8 +949,9 @@ const Dashboard = () => {
       usage_status: {
         reports_used: usage.reports_used,
         reports_limit: usage.reports_limit,
-        is_admin: isAdminUser
-      }
+        reports_quota_locked: usage.reports_quota_locked,
+        is_admin: isAdminUser,
+      },
     });
     
     navigate(`/research?${params.toString()}`);
@@ -1085,7 +1197,7 @@ const Dashboard = () => {
             className="btn btn-new-research" 
             style={{ justifyContent: 'center' }} 
             onClick={startNewResearch}
-            disabled={limitReached}
+            disabled={researchCreationBlocked}
           >
             <Icon.Plus /> New research
           </button>
@@ -1225,16 +1337,32 @@ const Dashboard = () => {
               <p style={{ margin: '12px 0 0', color: 'var(--mut)', fontSize: 15, fontStyle: 'italic' }}>
                 "{getResearcherQuote()}"
               </p>
+              {(showQuotaCapSubtitle || showAdminUnlimitedSubtitle) && (
               <p style={{ margin: '8px 0 0', color: 'var(--mut)', fontSize: 14 }}>
-                {limitReached ? (
-                  <>You have used all <b style={{ color: 'var(--fg)' }}>5 reports</b> for this month.</>
+                {showQuotaCapSubtitle ? (
+                  <>
+                    <b style={{ color: 'var(--fg)' }}>
+                      {quotaHeadingLimit} {reportsNoun(quotaHeadingLimit)}
+                    </b>{' '}
+                    deep — beta cap. Deletes won&apos;t refill.
+                  </>
                 ) : (
-                  <>You have <b style={{ color: 'var(--fg)' }}>{usage.reports_remaining} reports remaining</b> this month.</>
+                  <>No monthly report cap on your account.</>
                 )}
               </p>
+              )}
             </div>
 
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'stretch',
+                gap: 14,
+                minWidth: 280,
+              }}
+            >
+              {showUserRoleReportLimitHeading && <DashboardBetaSearchBlurb />}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
@@ -1311,8 +1439,12 @@ const Dashboard = () => {
                     type="button"
                     className="btn btn-new-research"
                     onClick={startNewResearch}
-                    disabled={limitReached}
-                    style={{ marginTop: 20, borderRadius: 9999, opacity: limitReached ? 0.45 : 1 }}
+                    disabled={researchCreationBlocked}
+                    style={{
+                      marginTop: 20,
+                      borderRadius: 9999,
+                      opacity: researchCreationBlocked ? 0.45 : 1,
+                    }}
                   >
                     <Icon.Plus /> New research
                   </button>
