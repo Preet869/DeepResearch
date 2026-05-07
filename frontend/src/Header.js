@@ -1,87 +1,243 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { supabase } from './supabaseClient';
+import { getUserFirstName } from './utils/userDisplayName';
+import { Wordmark } from './components/shared';
 
-const Header = () => {
-  const { user, signOut } = useAuth();
+function Header() {
+  const { user, signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+  const userMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!user?.id || !supabase) {
+      setUserProfile(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('first_name, full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (!cancelled) setUserProfile(data || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const onPointerDown = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [showUserMenu]);
+
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowUserMenu(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showUserMenu]);
 
   const handleLogout = async () => {
+    setShowUserMenu(false);
     await signOut();
     navigate('/login');
   };
 
+  const path = location.pathname;
+  const headerDisplayName = user ? getUserFirstName(userProfile, user) : '';
+
+  const navItem = (to, label) => {
+    const active =
+      to === '/dashboard'
+        ? path === '/dashboard'
+        : path === to || path.startsWith(`${to}/`);
+    return (
+      <Link
+        to={to}
+        className="mono"
+        style={{
+          textDecoration: 'none',
+          color: active ? 'var(--fg)' : 'var(--mut)',
+          fontSize: 15,
+          padding: '12px 18px',
+          borderRadius: 8,
+          letterSpacing: '.08em',
+          textTransform: 'lowercase',
+          position: 'relative',
+          fontFamily: 'JetBrains Mono, monospace',
+        }}
+      >
+        {label}
+        {active && (
+          <span
+            style={{
+              position: 'absolute',
+              left: 10,
+              right: 10,
+              bottom: 4,
+              height: 3,
+              borderRadius: 2,
+              background: label === 'research' ? '#FEE092' : 'var(--violet)',
+            }}
+          />
+        )}
+      </Link>
+    );
+  };
+
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link to="/dashboard" className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold text-gray-900">DeepResearch</span>
-          </Link>
+    <header
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '14px 28px',
+        borderBottom: '1px solid var(--line)',
+        background: 'color-mix(in srgb, var(--bg) 92%, transparent)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        flexShrink: 0,
+        zIndex: 40,
+      }}
+    >
+      <Link
+        to="/dashboard"
+        style={{
+          textDecoration: 'none',
+          color: 'inherit',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          flexShrink: 0,
+        }}
+      >
+        <Wordmark large />
+        <span
+          className="mono"
+          style={{
+            fontSize: 11,
+            letterSpacing: '0.06em',
+            color: 'var(--mut)',
+            padding: '5px 10px',
+            borderRadius: 999,
+            border: '1px solid color-mix(in srgb, var(--violet) 35%, var(--line))',
+            background: 'color-mix(in srgb, var(--violet) 6%, transparent)',
+            lineHeight: 1.2,
+            flexShrink: 0,
+          }}
+        >
+          We are in beta
+        </span>
+      </Link>
 
-          {/* User Menu */}
-          {user ? (
-            <div className="relative">
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center space-x-3 text-gray-700 hover:text-gray-900 focus:outline-none"
-              >
-                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <span className="hidden md:block text-sm font-medium truncate max-w-[200px]">{user.email}</span>
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg border border-gray-200 z-50">
-                  <div className="py-1">
-                    <div className="px-4 py-2 text-sm text-gray-500 border-b border-gray-100 truncate">
-                      {user.email}
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                    >
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                      Sign out
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <Link to="/login">
-              <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                Sign In
-              </button>
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* Close dropdown when clicking outside */}
-      {showUserMenu && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => setShowUserMenu(false)}
-        ></div>
+      {user && (
+        <nav
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {navItem('/dashboard', 'library')}
+          {navItem('/research', 'research')}
+          {isAdmin && navItem('/compare', 'compare')}
+        </nav>
       )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {user ? (
+          <div ref={userMenuRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              aria-expanded={showUserMenu}
+              aria-haspopup="menu"
+              title={user.email || undefined}
+              onClick={() => setShowUserMenu((v) => !v)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--line)',
+                background: 'var(--card)',
+                color: 'var(--fg)',
+                cursor: 'pointer',
+                fontSize: 13,
+                maxWidth: 220,
+                fontFamily: 'Geist, sans-serif',
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {headerDisplayName}
+              </span>
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showUserMenu && (
+              <div
+                role="menu"
+                className="card"
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 'calc(100% + 8px)',
+                  minWidth: 200,
+                  padding: 8,
+                  zIndex: 80,
+                  boxShadow: '0 8px 28px rgba(0,0,0,0.12)',
+                }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleLogout}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '10px 12px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--fg)',
+                    cursor: 'pointer',
+                    borderRadius: 6,
+                    fontSize: 14,
+                    fontFamily: 'Geist, sans-serif',
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Link to="/login" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+            Sign in
+          </Link>
+        )}
+      </div>
     </header>
   );
-};
+}
 
 export default Header;

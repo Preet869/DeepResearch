@@ -11,7 +11,7 @@
   display: none;
 }
 
-/* Custom scrollbar styling for dashboard */
+/* Custom scrollbar styling for  */
 .dashboard-scroll {
   scrollbar-width: thin;
   scrollbar-color: #6b7280 #f3f4f6;
@@ -41,6 +41,13 @@
 }
 
 /* Phase 1 Enhancement Styles */
+html, body, #root {
+  min-height: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -161,4 +168,301 @@ html {
     font-size: 12pt;
     line-height: 1.4;
   }
+}
+
+/* Welcome page custom styles */
+:root {
+  --fg: #1a1a1a;
+  --bg: #f7f2e6;
+  --bg-2: #ede5d6;
+  --card: #ffffff;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --mut: #64748b;
+  --mut2: #94a3b8;
+  --violet: #8b5cf6;
+  --violet-2: #7c3aed;
+  --cyan: #06b6d4;
+  --hot: #ef4444;
+  --sun: #f59e0b;
+  --paper: #fffef7;
+  --kind-report: var(--violet);
+  --kind-comparison: #16a34a;
+}
+
+/* Typography classes */
+.serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Geist font for main UI text */
+body, input, button, select, textarea {
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.ital {
+  font-style: italic;
+}
+
+/* Design elements */
+.sticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--mut);
+  letter-spacing: 0.02em;
+}
+
+.sticker .dot {
+  width: 6px;
+  height: 6px;
+  background: var(--dot-color, #22c55e);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+.sticker .dot-2 {
+  width: 6px;
+  height: 6px;
+  background: #24D3EE;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.sticker .dot-3 {
+  width: 6px;
+  height: 6px;
+  background: #EF4345;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.marker {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 60%,
+    rgb(253, 224, 146) 50%,
+    rgba(253, 224, 146) 100%
+  );
+  padding: 0px 4px;
+  border-radius: 0px;
+}
+
+.marker-half {
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 60%,
+    rgb(253, 224, 146) 50%,
+    rgba(253, 224, 146) 100%
+  );
+  padding: 0px 4px;
+  border-radius: 0px;
+}
+
+.squiggle {
+  position: relative;
+  color: rgb(242, 129, 29);
+  display: inline-block;
+}
+
+.squiggle::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0px;
+  height: 12px;
+  background-image: url("data:image/svg+xml;charset=utf8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 12'%3e%3cpath d='M0,8 Q12,2 25,8 T50,8' stroke='%237c5cff' stroke-width='7' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e");
+  background-repeat: repeat-x;
+  background-size: 25px 12px;
+  background-position: bottom;
+}
+
+.cite {
+  font-size: 10px;
+  vertical-align: super;
+  color: var(--violet);
+  font-weight: 600;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Geist', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: rgb(242, 129, 29);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: rgba(242, 129, 29, 0.9);
+  transform: translateY(-1px);
+}
+
+.btn-new-research {
+  background: var(--violet-2);
+  color: #fff;
+}
+
+.btn-new-research:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.btn-new-research:disabled {
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--mut);
+  border: 1px solid var(--line);
+}
+
+.btn-ghost:hover {
+  background: var(--bg-2);
+  color: var(--fg);
+}
+
+.route {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* Dot paper pattern for auth pages */
+.dot-paper {
+  background-image: 
+    radial-gradient(circle, var(--line) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Spin animation for loading states */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive design for auth pages */
+@media (max-width: 768px) {
+  .route.dot-paper > div:last-child {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .auth-left-panel {
+    padding: 32px 24px 24px !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--line);
+  }
+  
+  .auth-right-panel {
+    padding: 32px 24px !important;
+  }
+  
+  .auth-decorative-card {
+    display: none !important;
+  }
+  
+  .auth-welcome-text {
+    max-width: none !important;
+  }
+  
+  /* Make buttons more touch-friendly on mobile */
+  .btn {
+    padding: 16px 20px !important;
+    font-size: 16px !important;
+  }
+  
+  /* Ensure form inputs are touch-friendly */
+  input[type="email"], input[type="password"] {
+    padding: 16px 14px !important;
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-left-panel {
+    padding: 24px 20px 20px !important;
+  }
+  
+  .auth-right-panel {
+    padding: 24px 20px !important;
+  }
+}
+
+/* Markdown in comparison report (Instrument Serif + readable rhythm) */
+.comparison-md {
+  font-size: inherit;
+}
+.comparison-md p {
+  margin: 0.5em 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+.comparison-md p:first-child {
+  margin-top: 0;
+}
+.comparison-md p:last-child {
+  margin-bottom: 0;
+}
+.comparison-md ul,
+.comparison-md ol {
+  margin: 0.5em 0;
+  padding-left: 1.25em;
+}
+.comparison-md li {
+  margin: 0.25em 0;
+}
+.comparison-md strong {
+  font-weight: 600;
+}
+.comparison-md a {
+  color: var(--violet);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.comparison-md h1,
+.comparison-md h2,
+.comparison-md h3 {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-weight: 400;
+  margin: 0.75em 0 0.35em;
 }

@@ -1152,6 +1152,47 @@ def _count_monthly_reports(user_id: str, db: Any) -> int:
         return 0
 
 
+def _total_sources_cited(user_id: str, db: Any) -> int:
+    """Sum ``sources_used`` from assistant message metadata across the user's conversations.
+
+    Each completed research run stores ``sources_used`` (web sources in that report).
+    Article comparisons without the field are counted as 2 when we set it on save.
+    """
+    if not db:
+        return 0
+    uid = str(user_id)
+    try:
+        convos_res = db.table("conversations").select("id").eq("user_id", uid).execute()
+        convo_ids = [row["id"] for row in (convos_res.data or [])]
+        if not convo_ids:
+            return 0
+        total = 0
+        chunk_size = 100
+        for i in range(0, len(convo_ids), chunk_size):
+            part = convo_ids[i : i + chunk_size]
+            msg_res = (
+                db.table("messages")
+                .select("metadata")
+                .eq("role", "assistant")
+                .in_("conversation_id", part)
+                .execute()
+            )
+            for row in msg_res.data or []:
+                meta = row.get("metadata") or {}
+                if isinstance(meta, str):
+                    try:
+                        meta = json.loads(meta)
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                val = meta.get("sources_used")
+                if isinstance(val, (int, float)):
+                    total += int(val)
+        return total
+    except Exception as e:
+        logger.warning("total_sources_cited failed: %s", e)
+        return 0
+
+
 def _profile_role(user_id: str, db: Any) -> str:
     """Return app role from profiles; default ``user`` if missing or unreadable."""
     if not db:
@@ -1524,18 +1565,21 @@ async def get_usage(authorization: Annotated[Optional[str], Header()] = None):
             raise HTTPException(status_code=503, detail="Database client not configured.")
         reports_used = _count_monthly_reports(_auth_uid(user), db)
         uid = _auth_uid(user)
+        sources_cited_total = _total_sources_cited(uid, db)
         if _user_is_admin(uid, db):
             return {
                 "reports_used": reports_used,
                 "reports_limit": None,
                 "reports_remaining": None,
                 "is_admin": True,
+                "sources_cited_total": sources_cited_total,
             }
         return {
             "reports_used": reports_used,
             "reports_limit": MONTHLY_REPORT_LIMIT,
             "reports_remaining": max(0, MONTHLY_REPORT_LIMIT - reports_used),
             "is_admin": False,
+            "sources_cited_total": sources_cited_total,
         }
     except HTTPException:
         raise
@@ -1838,6 +1882,7 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         metadata_json["article2_title"] = article2.get("title", "Article 2")
         metadata_json["comparison_focus"] = body.comparison_focus or "overall"
         metadata_json["context"] = body.context
+        metadata_json["sources_used"] = 2
 
         message_to_save = {
             "conversation_id": convo_id,

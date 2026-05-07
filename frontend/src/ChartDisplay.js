@@ -20,6 +20,25 @@ import {
   Scatter
 } from 'recharts';
 
+/** Matches research report tokens; Recharts SVG often needs hex, not CSS var() in attributes. */
+const CHART = {
+  gridStroke: '#e2e8f0',
+  gridDash: '2 4',
+  axisTick: { fill: '#94a3b8', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' },
+  violet: '#8b5cf6',
+  violetDeep: '#7c3aed',
+  cyan: '#06b6d4',
+  tooltip: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: 12,
+  },
+};
+
+const CHART_COLOR_SEQUENCE = ['#8b5cf6', '#06b6d4', '#7c3aed', '#f59e0b', '#ef4444', '#84cc16', '#f97316'];
+
 const ChartDisplay = ({ graphData }) => {
   // State for chart type toggle - must be at the top before any early returns
   const [activeChartType, setActiveChartType] = useState(graphData?.type || 'bar');
@@ -65,18 +84,18 @@ const ChartDisplay = ({ graphData }) => {
 
   const hiddenItemsCount = data.length - MAX_ITEMS;
 
-  // Color palette for charts
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316'];
+  // Color palette for charts (violet / cyan forward)
+  const COLORS = CHART_COLOR_SEQUENCE;
 
   // Get insight styling based on type
   const getInsightStyling = (type) => {
     switch (type) {
       case 'primary':
         return {
-          bgColor: 'bg-blue-50',
-          borderColor: 'border-blue-200',
-          textColor: 'text-blue-800',
-          iconColor: 'text-blue-600'
+          bgColor: 'bg-violet-50',
+          borderColor: 'border-violet-200',
+          textColor: 'text-violet-900',
+          iconColor: 'text-violet-600'
         };
       case 'risk':
         return {
@@ -152,7 +171,7 @@ const ChartDisplay = ({ graphData }) => {
             data={processedData}
             margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+            <CartesianGrid strokeDasharray={CHART.gridDash} stroke={CHART.gridStroke} />
             <XAxis 
               dataKey="name" 
               label={{ value: x_label, position: 'insideBottom', offset: -10 }}
@@ -161,21 +180,18 @@ const ChartDisplay = ({ graphData }) => {
               height={80}
               fontSize={12}
               interval={0}
-              tick={{ fontSize: 11 }}
+              tick={CHART.axisTick}
+              stroke="#94a3b8"
             />
             <YAxis 
               label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
               fontSize={12}
-              tick={{ fontSize: 11 }}
+              tick={CHART.axisTick}
+              stroke="#94a3b8"
             />
             <Tooltip 
-              contentStyle={{ 
-                backgroundColor: '#F9FAFB', 
-                border: '1px solid #E5E7EB',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-              }}
-              labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+              contentStyle={CHART.tooltip}
+              labelStyle={{ fontWeight: 'bold', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}
               formatter={(value, name) => [
                 typeof value === 'number' ? value.toLocaleString() : value,
                 name === 'value' ? (graphData.article1_title || 'Article 1') : (graphData.article2_title || 'Article 2')
@@ -186,17 +202,17 @@ const ChartDisplay = ({ graphData }) => {
             <Bar 
               dataKey="value" 
               name={graphData.article1_title || 'Article 1'}
-              fill="#3B82F6" 
-              radius={[4, 4, 0, 0]}
-              stroke="#2563EB"
+              fill={CHART.violet} 
+              radius={[3, 3, 0, 0]}
+              stroke={CHART.violetDeep}
               strokeWidth={1}
             />
             <Bar 
               dataKey="value2" 
               name={graphData.article2_title || 'Article 2'}
-              fill="#10B981" 
-              radius={[4, 4, 0, 0]}
-              stroke="#059669"
+              fill={CHART.cyan} 
+              radius={[3, 3, 0, 0]}
+              stroke="#0891b2"
               strokeWidth={1}
             />
           </BarChart>
@@ -211,7 +227,7 @@ const ChartDisplay = ({ graphData }) => {
           data={processedData}
           margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+          <CartesianGrid strokeDasharray={CHART.gridDash} stroke={CHART.gridStroke} />
           <XAxis 
             dataKey="name" 
             label={{ value: x_label, position: 'insideBottom', offset: -10 }}
@@ -220,21 +236,18 @@ const ChartDisplay = ({ graphData }) => {
             height={80}
             fontSize={12}
             interval={0}
-            tick={{ fontSize: 11 }}
+            tick={CHART.axisTick}
+            stroke="#94a3b8"
           />
           <YAxis 
             label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
             fontSize={12}
-            tick={{ fontSize: 11 }}
+            tick={CHART.axisTick}
+            stroke="#94a3b8"
           />
           <Tooltip 
-            contentStyle={{ 
-              backgroundColor: '#F9FAFB', 
-              border: '1px solid #E5E7EB',
-              borderRadius: '8px',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-            }}
-            labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+            contentStyle={CHART.tooltip}
+            labelStyle={{ fontWeight: 'bold', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}
             formatter={(value, name) => [
               typeof value === 'number' ? value.toLocaleString() : value,
               y_label || 'Value'
@@ -243,10 +256,10 @@ const ChartDisplay = ({ graphData }) => {
           />
           <Bar 
             dataKey="value" 
-            fill="#3B82F6" 
-            radius={[4, 4, 0, 0]}
-            stroke="#2563EB"
-            strokeWidth={1}
+            fill={CHART.violet} 
+            radius={[3, 3, 0, 0]}
+            stroke={CHART.cyan}
+            strokeWidth={2}
           />
         </BarChart>
       </ResponsiveContainer>
@@ -271,16 +284,11 @@ const ChartDisplay = ({ graphData }) => {
           ))}
         </Pie>
         <Tooltip 
-          contentStyle={{ 
-            backgroundColor: '#F9FAFB', 
-            border: '1px solid #E5E7EB',
-            borderRadius: '8px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-          }}
-                     formatter={(value, name) => [
-             `${typeof value === 'number' ? value.toLocaleString() : value} (${((value / processedData.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(1)}%)`,
-             y_label || 'Value'
-           ]}
+          contentStyle={CHART.tooltip}
+          formatter={(value, name) => [
+            `${typeof value === 'number' ? value.toLocaleString() : value} (${((value / processedData.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(1)}%)`,
+            y_label || 'Value'
+          ]}
         />
         <Legend wrapperStyle={{ paddingTop: '20px' }} />
       </PieChart>
@@ -293,7 +301,7 @@ const ChartDisplay = ({ graphData }) => {
          data={processedData}
          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
       >
-        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+        <CartesianGrid strokeDasharray={CHART.gridDash} stroke={CHART.gridStroke} />
         <XAxis 
           dataKey="name" 
           label={{ value: x_label, position: 'insideBottom', offset: -10 }}
@@ -301,19 +309,18 @@ const ChartDisplay = ({ graphData }) => {
           textAnchor="end"
           height={80}
           fontSize={12}
+          tick={CHART.axisTick}
+          stroke="#94a3b8"
         />
         <YAxis 
           label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
           fontSize={12}
+          tick={CHART.axisTick}
+          stroke="#94a3b8"
         />
         <Tooltip 
-          contentStyle={{ 
-            backgroundColor: '#F9FAFB', 
-            border: '1px solid #E5E7EB',
-            borderRadius: '8px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-          }}
-          labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+          contentStyle={CHART.tooltip}
+          labelStyle={{ fontWeight: 'bold', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}
           formatter={(value, name) => [
             typeof value === 'number' ? value.toLocaleString() : value,
             y_label || 'Value'
@@ -323,10 +330,10 @@ const ChartDisplay = ({ graphData }) => {
         <Line 
           type="monotone" 
           dataKey="value" 
-          stroke="#3B82F6" 
+          stroke={CHART.violetDeep} 
           strokeWidth={3}
-          dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-          activeDot={{ r: 6, stroke: '#3B82F6', strokeWidth: 2 }}
+          dot={{ fill: CHART.violet, strokeWidth: 2, r: 4 }}
+          activeDot={{ r: 6, stroke: CHART.cyan, strokeWidth: 2, fill: CHART.violetDeep }}
         />
       </LineChart>
     </ResponsiveContainer>
@@ -338,7 +345,7 @@ const ChartDisplay = ({ graphData }) => {
          data={processedData}
          margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
       >
-        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+        <CartesianGrid strokeDasharray={CHART.gridDash} stroke={CHART.gridStroke} />
         <XAxis 
           dataKey="name" 
           label={{ value: x_label, position: 'insideBottom', offset: -10 }}
@@ -346,36 +353,35 @@ const ChartDisplay = ({ graphData }) => {
           textAnchor="end"
           height={80}
           fontSize={12}
+          tick={CHART.axisTick}
+          stroke="#94a3b8"
         />
         <YAxis 
           label={{ value: y_label, angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
           fontSize={12}
+          tick={CHART.axisTick}
+          stroke="#94a3b8"
         />
-                 <Tooltip 
-           contentStyle={{ 
-             backgroundColor: '#F9FAFB', 
-             border: '1px solid #E5E7EB',
-             borderRadius: '8px',
-             boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-           }}
-           labelStyle={{ fontWeight: 'bold', color: '#374151' }}
-           formatter={(value, name) => [
-             typeof value === 'number' ? value.toLocaleString() : value,
-             y_label || 'Value'
-           ]}
-           labelFormatter={(label) => `${x_label || 'Period'}: ${label}`}
-         />
+        <Tooltip 
+          contentStyle={CHART.tooltip}
+          labelStyle={{ fontWeight: 'bold', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}
+          formatter={(value, name) => [
+            typeof value === 'number' ? value.toLocaleString() : value,
+            y_label || 'Value'
+          ]}
+          labelFormatter={(label) => `${x_label || 'Period'}: ${label}`}
+        />
         <Area 
           type="monotone" 
           dataKey="value" 
-          stroke="#3B82F6" 
-          fill="url(#colorGradient)"
+          stroke={CHART.violetDeep} 
+          fill="url(#researchAreaGradient)"
           strokeWidth={2}
         />
         <defs>
-          <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-            <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
+          <linearGradient id="researchAreaGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={CHART.violet} stopOpacity={0.35}/>
+            <stop offset="95%" stopColor={CHART.cyan} stopOpacity={0.08}/>
           </linearGradient>
         </defs>
       </AreaChart>
@@ -396,13 +402,15 @@ const ChartDisplay = ({ graphData }) => {
           data={scatterData}
           margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+          <CartesianGrid strokeDasharray={CHART.gridDash} stroke={CHART.gridStroke} />
           <XAxis 
             type="number"
             dataKey="x"
             name={x_label || 'Position'}
             label={{ value: x_label || 'Position', position: 'insideBottom', offset: -10 }}
             fontSize={12}
+            tick={CHART.axisTick}
+            stroke="#94a3b8"
           />
           <YAxis 
             type="number"
@@ -410,15 +418,12 @@ const ChartDisplay = ({ graphData }) => {
             name={y_label || 'Value'}
             label={{ value: y_label || 'Value', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
             fontSize={12}
+            tick={CHART.axisTick}
+            stroke="#94a3b8"
           />
           <Tooltip 
-            contentStyle={{ 
-              backgroundColor: '#F9FAFB', 
-              border: '1px solid #E5E7EB',
-              borderRadius: '8px',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-            }}
-            labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+            contentStyle={CHART.tooltip}
+            labelStyle={{ fontWeight: 'bold', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}
             formatter={(value, name, props) => [
               typeof value === 'number' ? value.toLocaleString() : value,
               props.payload.name || y_label || 'Value'
@@ -429,8 +434,8 @@ const ChartDisplay = ({ graphData }) => {
           />
           <Scatter 
             dataKey="y" 
-            fill="#3B82F6"
-            stroke="#2563EB"
+            fill={CHART.violet}
+            stroke={CHART.violetDeep}
             strokeWidth={2}
           />
         </ScatterChart>
@@ -456,7 +461,7 @@ const ChartDisplay = ({ graphData }) => {
   };
 
   return (
-    <div ref={chartRef} className="mt-6 p-6 bg-white rounded-lg shadow-lg border border-gray-200">
+    <div ref={chartRef} className="mt-2 p-6 rounded-xl border shadow-sm" style={{ background: 'var(--card)', borderColor: 'var(--line-strong)' }}>
       {/* Story-Driven Insights */}
       {key_insight && (
         <div className={`mb-6 p-5 rounded-xl border-l-4 ${insightStyling.bgColor} ${insightStyling.borderColor} shadow-sm`}>
@@ -492,14 +497,14 @@ const ChartDisplay = ({ graphData }) => {
       {/* Chart Title and Description */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xl font-bold text-gray-800 flex items-center">
+          <h3 className="text-xl font-bold serif flex items-center" style={{ color: 'var(--fg)' }}>
             <span className="mr-2">📊</span>
             {title}
           </h3>
           
           <div className="flex items-center space-x-2">
             {/* Chart Type Toggle */}
-            <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+            <div className="flex items-center space-x-1 rounded-lg p-1" style={{ background: 'var(--bg-2)' }}>
               {[
                 { type: 'bar', icon: '📊', label: 'Bar' },
                 { type: 'pie', icon: '🥧', label: 'Pie' },
@@ -510,11 +515,16 @@ const ChartDisplay = ({ graphData }) => {
                 <button
                   key={chartType}
                   onClick={() => setActiveChartType(chartType)}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-1 ${
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-1 mono ${
                     activeChartType === chartType
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      ? 'shadow-sm'
+                      : 'hover:opacity-90'
                   }`}
+                  style={
+                    activeChartType === chartType
+                      ? { background: 'var(--card)', color: 'var(--violet-2)' }
+                      : { color: 'var(--mut)' }
+                  }
                   title={`Switch to ${label} Chart`}
                 >
                   <span className="text-xs">{icon}</span>
@@ -528,7 +538,8 @@ const ChartDisplay = ({ graphData }) => {
               <button
                 onClick={() => exportChart('png')}
                 disabled={isExporting}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors duration-200 disabled:opacity-50"
+                className="p-2 rounded-md transition-colors duration-200 disabled:opacity-50"
+                style={{ color: 'var(--mut)' }}
                 title="Export Chart"
               >
                 {isExporting ? (
@@ -546,8 +557,8 @@ const ChartDisplay = ({ graphData }) => {
             {/* Fullscreen Button */}
             <button
               onClick={() => setIsFullscreen(true)}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors duration-200"
-              title="View in Fullscreen"
+              className="p-2 rounded-md transition-colors duration-200"
+              style={{ color: 'var(--mut)' }}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
@@ -562,11 +573,11 @@ const ChartDisplay = ({ graphData }) => {
       </div>
       
       {/* Chart */}
-      <div className="bg-gray-50 rounded-lg p-4">
+      <div className="rounded-lg p-4" style={{ background: 'var(--paper)' }}>
         {/* Export-only container - clean chart for export */}
-        <div className="chart-export-area bg-white p-6 rounded-lg">
+        <div className="chart-export-area p-6 rounded-lg" style={{ background: 'var(--card)' }}>
           <div className="text-center mb-4">
-            <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+            <h3 className="text-xl font-bold serif" style={{ color: 'var(--fg)' }}>{title}</h3>
             {description && (
               <p className="text-sm text-gray-600 mt-1">{description}</p>
             )}
@@ -579,7 +590,8 @@ const ChartDisplay = ({ graphData }) => {
           <div className="mt-4 text-center">
             <button
               onClick={() => setShowAllData(!showAllData)}
-              className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors duration-200 flex items-center space-x-2 mx-auto"
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2 mx-auto mono border"
+              style={{ color: 'var(--violet-2)', background: 'var(--bg-2)', borderColor: 'var(--line-strong)' }}
             >
               {showAllData ? (
                 <>
@@ -590,7 +602,7 @@ const ChartDisplay = ({ graphData }) => {
                 <>
                   <span>📈</span>
                   <span>Show All {data.length} Items</span>
-                  <span className="text-xs bg-blue-200 px-2 py-1 rounded-full">
+                  <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'var(--bg-2)', color: 'var(--violet-2)' }}>
                     +{hiddenItemsCount} more
                   </span>
                 </>
@@ -602,15 +614,15 @@ const ChartDisplay = ({ graphData }) => {
       
       {/* AI Insights Panel */}
       {ai_insights && ai_insights.length > 0 && (
-        <div className="mt-6 p-5 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-200">
+        <div className="mt-6 p-5 rounded-xl border" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,.08), rgba(6,182,212,.08))', borderColor: '#ddd6fe' }}>
           <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
             <span className="mr-2">🧠</span>
             AI-Generated Insights
           </h4>
           <div className="space-y-3">
             {ai_insights.map((insight, index) => (
-              <div key={index} className="flex items-start space-x-3 p-3 bg-white rounded-lg border border-indigo-100">
-                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-sm">
+              <div key={index} className="flex items-start space-x-3 p-3 rounded-lg border" style={{ background: 'var(--card)', borderColor: 'var(--line)' }}>
+                <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-sm" style={{ background: 'var(--bg-2)', color: 'var(--violet-2)' }}>
                   {index + 1}
                 </div>
                 <p className="text-gray-700 leading-relaxed text-sm">
@@ -628,22 +640,22 @@ const ChartDisplay = ({ graphData }) => {
       {/* Fullscreen Modal */}
       {isFullscreen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full h-full max-w-7xl max-h-[90vh] flex flex-col">
+          <div className="rounded-xl shadow-2xl w-full h-full max-w-7xl max-h-[90vh] flex flex-col" style={{ background: 'var(--card)' }}>
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--line)' }}>
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                <h2 className="text-2xl font-bold serif flex items-center" style={{ color: 'var(--fg)' }}>
                   <span className="mr-2">📊</span>
                   {title}
                 </h2>
                 {description && (
-                  <p className="text-sm text-gray-600 mt-1">{description}</p>
+                  <p className="text-sm mt-1 mono" style={{ color: 'var(--mut)' }}>{description}</p>
                 )}
               </div>
               
               <div className="flex items-center space-x-2">
                 {/* Chart Type Toggle in Modal */}
-                <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+                <div className="flex items-center space-x-1 rounded-lg p-1" style={{ background: 'var(--bg-2)' }}>
                   {[
                     { type: 'bar', icon: '📊', label: 'Bar' },
                     { type: 'pie', icon: '🥧', label: 'Pie' },
@@ -654,11 +666,14 @@ const ChartDisplay = ({ graphData }) => {
                     <button
                       key={chartType}
                       onClick={() => setActiveChartType(chartType)}
-                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-1 ${
-                        activeChartType === chartType
-                          ? 'bg-white text-blue-600 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-1 mono ${
+                        activeChartType === chartType ? 'shadow-sm' : ''
                       }`}
+                      style={
+                        activeChartType === chartType
+                          ? { background: 'var(--card)', color: 'var(--violet-2)' }
+                          : { color: 'var(--mut)' }
+                      }
                       title={`Switch to ${label} Chart`}
                     >
                       <span>{icon}</span>
@@ -670,7 +685,8 @@ const ChartDisplay = ({ graphData }) => {
                 {/* Close Button */}
                 <button
                   onClick={() => setIsFullscreen(false)}
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors duration-200"
+                  className="p-2 rounded-md transition-colors duration-200"
+                  style={{ color: 'var(--mut)' }}
                   title="Close Fullscreen"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -715,7 +731,7 @@ const ChartDisplay = ({ graphData }) => {
               )}
               
               {/* Large Chart */}
-              <div className="bg-gray-50 rounded-lg p-6">
+              <div className="rounded-lg p-6" style={{ background: 'var(--paper)' }}>
                 {renderChart(600)}
                 
                 {/* Show All Data Button in Modal */}
@@ -723,7 +739,8 @@ const ChartDisplay = ({ graphData }) => {
                   <div className="mt-6 text-center">
                     <button
                       onClick={() => setShowAllData(!showAllData)}
-                      className="px-6 py-3 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors duration-200 flex items-center space-x-2 mx-auto"
+                      className="px-6 py-3 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center space-x-2 mx-auto mono border"
+                      style={{ color: 'var(--violet-2)', background: 'var(--bg-2)', borderColor: 'var(--line-strong)' }}
                     >
                       {showAllData ? (
                         <>
@@ -734,7 +751,7 @@ const ChartDisplay = ({ graphData }) => {
                         <>
                           <span>📈</span>
                           <span>Show All {data.length} Items</span>
-                          <span className="text-xs bg-blue-200 px-2 py-1 rounded-full">
+                          <span className="text-xs px-2 py-1 rounded-full" style={{ background: 'var(--bg-2)', color: 'var(--violet-2)' }}>
                             +{hiddenItemsCount} more
                           </span>
                         </>
@@ -746,15 +763,15 @@ const ChartDisplay = ({ graphData }) => {
                
                {/* AI Insights in Modal */}
                {ai_insights && ai_insights.length > 0 && (
-                 <div className="mt-8 p-6 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-200">
-                   <h4 className="text-xl font-semibold text-gray-900 mb-5 flex items-center">
+                 <div className="mt-8 p-6 rounded-xl border" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,.08), rgba(6,182,212,.08))', borderColor: '#ddd6fe' }}>
+                   <h4 className="text-xl font-semibold mb-5 flex items-center" style={{ color: 'var(--fg)' }}>
                      <span className="mr-2">🧠</span>
                      AI-Generated Insights
                    </h4>
                    <div className="space-y-4">
                      {ai_insights.map((insight, index) => (
-                       <div key={index} className="flex items-start space-x-4 p-4 bg-white rounded-lg border border-indigo-100">
-                         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center font-semibold text-indigo-600">
+                       <div key={index} className="flex items-start space-x-4 p-4 rounded-lg border" style={{ background: 'var(--card)', borderColor: 'var(--line)' }}>
+                         <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-semibold" style={{ background: 'var(--bg-2)', color: 'var(--violet-2)' }}>
                            {index + 1}
                          </div>
                          <p className="text-gray-700 leading-relaxed">
