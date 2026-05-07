@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { config } from '../config';
 import { Icon, FrameDivider, HandArrow, TopNav, PIPELINE_STEP_DOT_COLORS } from './shared';
 
 function Welcome() {
   const navigate = useNavigate();
+  const [betaSeats, setBetaSeats] = useState({
+    status: 'loading',
+    limit: null,
+    spotsRemaining: null,
+    signupOpen: null,
+    degraded: null,
+  });
   
   const go = (route) => {
     if (route === 'auth') {
@@ -12,6 +20,47 @@ function Welcome() {
       navigate(`/${route}`);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(config.endpoints.betaSignupStatus);
+        if (cancelled) return;
+        if (!res.ok) {
+          setBetaSeats({
+            status: 'error',
+            limit: null,
+            spotsRemaining: null,
+            signupOpen: null,
+            degraded: null,
+          });
+          return;
+        }
+        if (cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const limitNum = typeof data.limit === 'number' ? data.limit : null;
+        const spots =
+          typeof data.spots_remaining === 'number' ? data.spots_remaining : null;
+        const open = typeof data.signup_open === 'boolean' ? data.signup_open : null;
+        setBetaSeats({
+          status: 'ready',
+          limit: limitNum,
+          spotsRemaining: spots,
+          signupOpen: open,
+          degraded: Boolean(data.degraded),
+        });
+      } catch {
+        if (!cancelled) {
+          setBetaSeats((s) => ({ ...s, status: 'error' }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="route" style={{ position: 'relative' }}>
@@ -27,7 +76,7 @@ function Welcome() {
             {/* sticker badge */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 28, flexWrap: 'wrap' }}>
               <span className="sticker"><span className="dot" />
-               v1.4 — now with comparison</span>
+               v1.4</span>
               <span className="sticker mono" style={{ borderColor: 'var(--line)', color: 'var(--mut)'}}>
               <span className="dot" style={{ background: '#06B6D5' }} /> 
                   Claude 4.6 · Tavily · Citations
@@ -125,10 +174,10 @@ function Welcome() {
             
             <Pillar
               num="02"
-              title="Side-by-side compare"
+              title="Citations from real sources"
               tint="var(--cyan)"
-              body="Drop two articles. Get a comparison of methodology, findings, evidence quality, and practical implications in seconds."
-              chip="paper-A · paper-B" />
+              body="APA references track the pages and articles DeepResearch pulled from the live web—not invented titles or phantom links you cannot verify."
+              chip="APA · live retrieval" />
             
             <Pillar
               num="03"
@@ -170,15 +219,7 @@ function Welcome() {
               <span />  Beta Access
             </div>
             
-            <div className="serif" style={{ 
-              fontSize: 'clamp(32px, 4vw, 48px)', 
-              lineHeight: 1.2, 
-              letterSpacing: '-.02em',
-              marginBottom: 16
-            }}>
-              Beta trial — <span style={{ fontStyle: 'italic', color: 'rgb(242, 129, 29)' }}>only first</span><br />
-              <span className="marker">50 users</span> can use it.
-            </div>
+            <BetaSeatsHeading state={betaSeats} />
             
             <p style={{ 
               fontSize: 16, 
@@ -258,6 +299,60 @@ function Welcome() {
           <span>v1.4.0</span>
         </div>
       </section>
+    </div>
+  );
+}
+
+function BetaSeatsHeading({ state }) {
+  const serif = {
+    fontSize: 'clamp(32px, 4vw, 48px)',
+    lineHeight: 1.2,
+    letterSpacing: '-.02em',
+    marginBottom: 16,
+  };
+  const accent = 'rgb(242, 129, 29)';
+
+  if (state.status === 'loading') {
+    return (
+      <div className="serif" style={serif}>
+        Beta trial — <span style={{ fontStyle: 'italic', color: accent }}>limited seats</span><br />
+        <span style={{ color: 'var(--mut)' }}>Checking signup availability…</span>
+      </div>
+    );
+  }
+
+  const lim =
+    typeof state.limit === 'number' && state.limit > 0 ? state.limit : 50;
+  const noLiveNumbers =
+    state.status === 'error' ||
+    state.degraded ||
+    state.spotsRemaining == null ||
+    state.signupOpen == null;
+
+  if (noLiveNumbers) {
+    return (
+      <div className="serif" style={serif}>
+        Beta trial — <span style={{ fontStyle: 'italic', color: accent }}>limited rollout</span><br />
+        <span className="marker">{lim}</span> founder spots — join while signups stay open.
+      </div>
+    );
+  }
+
+  if (!state.signupOpen) {
+    return (
+      <div className="serif" style={serif}>
+        Beta cohort is <span style={{ fontStyle: 'italic', color: accent }}>full</span><br />
+        <span className="marker">{lim}</span> accounts — thanks for your interest.
+      </div>
+    );
+  }
+
+  return (
+    <div className="serif" style={serif}>
+      Beta trial — <span style={{ fontStyle: 'italic', color: accent }}>spots remaining</span><br />
+      <span className="marker">{state.spotsRemaining}</span>
+      {' of '}
+      {lim}
     </div>
   );
 }

@@ -246,6 +246,13 @@ body, input, button, select, textarea {
   animation: pulse 2s infinite;
 }
 
+.sticker .dot-4 {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
