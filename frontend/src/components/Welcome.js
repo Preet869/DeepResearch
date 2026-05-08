@@ -233,7 +233,9 @@ function Welcome() {
               maxWidth: 400,
               margin: '0 auto 32px'
             }}>
-              Get exclusive early access to DeepResearch and help shape the future of AI-powered research.
+              Stop Googling at 3am. Start researching smarter.
+              <br />
+              5 free reports for <span className="marker-half">students</span> — 50 beta spots total.
             </p>
             
             <button 
