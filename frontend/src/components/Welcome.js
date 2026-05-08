@@ -465,7 +465,7 @@ function Pillar({ num, title, body, tint, chip }) {
 function Pipeline() {
   const steps = [
     { n: '01', t: 'You ask', d: 'Type any research question — natural language, no syntax.' },
-    { n: '02', t: 'We read', d: 'Tavily pulls live sources; GPT-4o ranks and de-duplicates.' },
+    { n: '02', t: 'We read', d: 'Tavily pulls live sources; Claude 4.6 ranks and de-duplicates.' },
     { n: '03', t: 'It writes', d: 'A structured report with charts, evidence, counter-points.' },
     { n: '04', t: 'You ship', d: 'Export to PDF, Markdown, JSON. Or branch into follow-ups.' },
   ].map((s, i) => ({ ...s, c: PIPELINE_STEP_DOT_COLORS[i] }));
