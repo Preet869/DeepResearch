@@ -591,7 +591,7 @@ const ResearchPage = () => {
                     fontFamily: 'Geist, -apple-system, BlinkMacSystemFont, sans-serif',
                   }}
                 >
-                  Phrase it like you&apos;d ask a brilliant, patient friend. We&apos;ll handle the rest — sources,
+                  Ask your research question in plain English. We&apos;ll handle the rest — sources,
                   structure, citations, charts.
                 </p>
 
