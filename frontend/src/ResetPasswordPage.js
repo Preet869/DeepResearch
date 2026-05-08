@@ -136,7 +136,7 @@ const ResetPasswordPage = () => {
     };
 
     return (
-      <header style={{
+      <header className="auth-top-nav" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '20px 36px', borderBottom: '1px solid var(--line)',
         position: 'sticky', top: 0, zIndex: 50,

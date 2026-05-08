@@ -63,16 +63,18 @@ function Welcome() {
   }, []);
 
   return (
-    <div className="route" style={{ position: 'relative' }}>
+    <div className="route welcome-page" style={{ position: 'relative' }}>
       {/* TOP NAVIGATION */}
       <TopNav route="welcome" go={go} authed={false} />
       {/* HERO */}
       <section style={{ padding: '72px 48px 32px', position: 'relative' }}>
-        <div style={{ maxWidth: 1400, margin: '0 auto', position: 'relative',
+        <div
+          className="welcome-hero-grid"
+          style={{ maxWidth: 1400, margin: '0 auto', position: 'relative',
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, alignItems: 'start' }}>
 
           {/* LEFT column — headline, sub, CTA */}
-          <div>
+          <div className="welcome-hero-copy">
             {/* sticker badge */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 28, flexWrap: 'wrap' }}>
               <span className="sticker"><span className="dot" />
@@ -87,7 +89,7 @@ function Welcome() {
             </div>
 
             {/* hero headline */}
-            <h1 style={{
+            <h1 className="welcome-hero-title" style={{
               margin: 0,
               fontFamily: 'Instrument Serif, Georgia, serif',
               fontWeight: 400,
@@ -152,8 +154,10 @@ function Welcome() {
           </div>
 
           {/* RIGHT column — hero collage */}
-          <div style={{ alignSelf: 'center' }}>
-            <HeroCollage />
+          <div className="welcome-hero-visual" style={{ alignSelf: 'center' }}>
+            <div className="welcome-hero-collage-frame">
+              <HeroCollage />
+            </div>
           </div>
         </div>
       </section>
@@ -162,7 +166,7 @@ function Welcome() {
       <section style={{ padding: '80px 48px 32px' }}>
         <div style={{ maxWidth: 1400, margin: '0 auto' }}>
           <FrameDivider label="What it does" />
-          <div style={{
+          <div className="welcome-pillars-grid" style={{
             display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 18, marginTop: 4
           }}>
             <Pillar
@@ -201,7 +205,7 @@ function Welcome() {
       {/* TESTIMONIAL / QUOTE */}
       <section style={{ padding: '40px 48px 80px' }}>
         <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', justifyContent: 'center' }}>
-          <div className="card" style={{ 
+          <div className="card welcome-beta-card" style={{ 
             padding: '48px 60px', 
             textAlign: 'center', 
             background: 'linear-gradient(135deg, var(--bg) 0%, var(--bg-2) 100%)',
@@ -251,7 +255,7 @@ function Welcome() {
 
       {/* CTA STRIP */}
       <section style={{ padding: '0 48px 32px' }}>
-        <div style={{
+        <div className="welcome-cta-panel" style={{
           maxWidth: 1400, margin: '0 auto',
           padding: '56px 48px',
           borderRadius: 22,
@@ -264,7 +268,7 @@ function Welcome() {
             backgroundImage: 'radial-gradient(rgba(255,255,255,.18) 1px, transparent 1px)',
             backgroundSize: '18px 18px', opacity: .35, pointerEvents: 'none'
           }} />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32, position: 'relative' }}>
+          <div className="welcome-cta-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32, position: 'relative' }}>
             <div>
               <div className="mono" style={{ fontSize: 11, opacity: .8, letterSpacing: '.16em', textTransform: 'uppercase' }}>
                 free to start · no credit card
@@ -288,7 +292,7 @@ function Welcome() {
         </div>
 
         {/* footer mini */}
-        <div style={{
+        <div className="welcome-footer" style={{
           maxWidth: 1400, margin: '32px auto 0',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           color: 'var(--mut2)', fontSize: 12,
@@ -359,7 +363,7 @@ function BetaSeatsHeading({ state }) {
 
 function HeroCollage() {
   return (
-    <div style={{ position: 'relative', height: 600, overflow: 'hidden' }}>
+    <div className="welcome-hero-collage" style={{ position: 'relative', height: 600, overflow: 'hidden' }}>
       {/* paper bg card — tilted */}
       <div className="card" style={{
         position: 'absolute', top: 50, right: 10, width: 420, height: 480,
@@ -421,7 +425,7 @@ function HeroCollage() {
       </div>
 
       {/* tiny floating sticker */}
-      <div style={{
+      <div className="welcome-collage-sticker" style={{
         position: 'absolute', bottom: 40, left: 320,
         transform: 'rotate(-8deg)',
         background: '#FFD23F', color: '#1A1300',
@@ -434,7 +438,7 @@ function HeroCollage() {
       </div>
 
       {/* scribble arrow */}
-      <div style={{ position: 'absolute', top: 220, left: -10 }}>
+      <div className="welcome-collage-arrow" style={{ position: 'absolute', top: 220, left: -10 }}>
         <HandArrow rotate={20} color="var(--cyan)" />
       </div>
     </div>
@@ -471,7 +475,7 @@ function Pipeline() {
   ].map((s, i) => ({ ...s, c: PIPELINE_STEP_DOT_COLORS[i] }));
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, marginTop: 6 }}>
+    <div className="welcome-pipeline-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, marginTop: 6 }}>
       {steps.map((s, i) =>
         <div key={s.n} style={{
           padding: '20px 22px',
