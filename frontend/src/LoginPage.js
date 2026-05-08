@@ -210,7 +210,7 @@ const LoginPage = () => {
     };
 
     return (
-      <header style={{
+      <header className="auth-top-nav" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '20px 36px', borderBottom: '1px solid var(--line)',
         position: 'sticky', top: 0, zIndex: 50,
@@ -307,9 +307,9 @@ const LoginPage = () => {
 
       {/* RIGHT — form */}
         <div className="auth-right-panel" style={{ padding: '40px 70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '100%', maxWidth: 475 }}>
+        <div className="auth-form-stack" style={{ width: '100%', maxWidth: 475 }}>
           {/* mode switcher */}
-          <div style={{
+          <div className="auth-mode-switch" style={{
             display: 'inline-flex', padding: 4, borderRadius: 999,
             background: 'var(--card)', border: '1px solid var(--line-strong)',
             marginBottom: 28
@@ -398,7 +398,7 @@ const LoginPage = () => {
             <form onSubmit={handleSubmit}
             style={{ marginTop: 26, display: 'flex', flexDirection: 'column', gap: 14 }}>
               {isSignUp && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div className="auth-name-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <Field 
                     label="First Name" 
                     type="text" 

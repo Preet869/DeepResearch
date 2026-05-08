@@ -390,10 +390,67 @@ body, input, button, select, textarea {
 
 /* Responsive design for auth pages */
 @media (max-width: 768px) {
+  .route.dot-paper {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
   .route.dot-paper > div:last-child {
     grid-template-columns: 1fr !important;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
-  
+
+  .route.dot-paper .auth-left-panel,
+  .route.dot-paper .auth-right-panel {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: break-word;
+  }
+
+  .route.dot-paper .auth-form-stack {
+    max-width: 100% !important;
+    min-width: 0;
+  }
+
+  .route.dot-paper .auth-mode-switch {
+    display: flex !important;
+    flex-wrap: wrap;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .route.dot-paper .auth-mode-switch button {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .route.dot-paper .auth-name-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .route.dot-paper .auth-right-panel label {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .route.dot-paper .auth-right-panel input {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .route.dot-paper .auth-right-panel .btn {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
   .auth-left-panel {
     padding: 32px 24px 24px !important;
     border-right: none !important;
@@ -423,6 +480,43 @@ body, input, button, select, textarea {
     padding: 16px 14px !important;
     font-size: 16px !important;
   }
+
+  /* Auth pages: centered nav overlaps wordmark on narrow screens */
+  .route.dot-paper header.auth-top-nav {
+    flex-wrap: wrap;
+    padding: 12px 16px !important;
+    gap: 8px;
+    row-gap: 10px;
+  }
+
+  .route.dot-paper header.auth-top-nav > div:first-of-type {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .route.dot-paper header.auth-top-nav nav {
+    position: static !important;
+    transform: none !important;
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: center;
+    gap: 4px;
+    padding-top: 10px;
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  .route.dot-paper header.auth-top-nav nav button {
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+  }
+
+  .route.dot-paper header.auth-top-nav > div:last-child {
+    display: none !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -432,6 +526,198 @@ body, input, button, select, textarea {
   
   .auth-right-panel {
     padding: 24px 20px !important;
+  }
+}
+
+/* Welcome page — mobile only (desktop: no rules apply above breakpoint) */
+@media (max-width: 768px) {
+  /* Contain horizontal spill (100vw / abs collage / grid min-width) */
+  .welcome-page {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .welcome-page > header {
+    flex-wrap: wrap;
+    padding: 12px 16px !important;
+    gap: 8px;
+    row-gap: 10px;
+  }
+
+  .welcome-page > header > div:first-of-type {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .welcome-page > header nav {
+    position: static !important;
+    transform: none !important;
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: center;
+    gap: 4px;
+    padding-top: 10px;
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  .welcome-page > header nav button {
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+  }
+
+  .welcome-page > header > div:last-child {
+    flex: 0 0 auto;
+  }
+
+  .welcome-page > section {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+
+  .welcome-page > section:last-of-type {
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .welcome-page .welcome-hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 28px !important;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .welcome-page .welcome-hero-grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .welcome-page .welcome-hero-copy {
+    order: 1;
+  }
+
+  .welcome-page .welcome-hero-visual {
+    order: 2;
+    align-self: center !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .welcome-page .welcome-hero-title {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100%;
+    font-size: clamp(40px, 10.5vw, 56px) !important;
+    letter-spacing: -0.03em !important;
+  }
+
+  /*
+   * Hero collage: design canvas is 520×600; scale to column width (100%, not 100vw —
+   * vw is wider than the paint viewport on many mobile browsers and causes sideways scroll).
+   */
+  .welcome-page .welcome-hero-collage-frame {
+    --welcome-collage-scale: min(1, calc(100% / 520));
+    width: calc(520px * var(--welcome-collage-scale));
+    max-width: 100%;
+    height: calc(600px * var(--welcome-collage-scale));
+    margin: 0 auto -36px;
+    position: relative;
+    overflow: visible;
+  }
+
+  .welcome-page .welcome-hero-collage-frame .welcome-hero-collage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 520px !important;
+    height: 600px !important;
+    max-width: none !important;
+    transform: scale(var(--welcome-collage-scale));
+    transform-origin: top left !important;
+    overflow: visible !important;
+    margin: 0 !important;
+  }
+
+  .welcome-page .welcome-collage-arrow {
+    opacity: 0.35;
+  }
+
+  .welcome-page .welcome-pillars-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .welcome-page .welcome-pipeline-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .welcome-page .welcome-pipeline-grid > div {
+    border-right: none !important;
+    border-bottom: 1px solid var(--line) !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .welcome-page .welcome-pipeline-grid > div:last-child {
+    border-bottom: none !important;
+  }
+
+  .welcome-page .welcome-beta-card {
+    padding: 24px 20px !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .welcome-page .welcome-cta-panel {
+    padding: 32px 20px !important;
+  }
+
+  .welcome-page .welcome-cta-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 20px !important;
+  }
+
+  .welcome-page .welcome-cta-row button {
+    width: 100%;
+    justify-content: center;
+    white-space: normal !important;
+  }
+
+  .welcome-page .welcome-footer {
+    position: relative;
+    flex-direction: column !important;
+    gap: 8px;
+    align-items: center !important;
+    text-align: center;
+  }
+
+  .welcome-page .welcome-footer > span:nth-child(2) {
+    position: static !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .welcome-page .welcome-hero-collage-frame {
+    margin-bottom: -44px;
+  }
+
+  .welcome-page .welcome-collage-arrow,
+  .welcome-page .welcome-collage-sticker {
+    display: none !important;
+  }
+
+  .welcome-page .welcome-cta-panel {
+    padding: 28px 18px !important;
+    border-radius: 16px !important;
   }
 }
 
