@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from './Header';
 import LayeredResearchDisplay from './LayeredResearchDisplay';
@@ -6,11 +6,78 @@ import ExportManager from './components/ExportManager';
 import CitationHelper from './components/CitationHelper';
 import Analytics from './components/Analytics';
 import ResearchLibrary from './components/ResearchLibrary';
+import OnboardingTooltip from './components/OnboardingTooltip';
 import { config } from './config';
 import { apiFetch, AUTH_REQUIRED, getSupabaseAccessToken } from './apiClient';
 import analyticsService from './services/analyticsService';
 import { Icon, PIPELINE_STEP_DOT_COLORS, pipelineStepDotStyle } from './components/shared';
 import { useAuth } from './AuthContext';
+
+// Research question examples for rotating placeholder
+const RESEARCH_EXAMPLES = [
+  "e.g., What study designs are best for researching vaccine effectiveness?",
+  "e.g., How do observational studies handle confounding variables?",
+  "e.g., What are the main causes of academic burnout in university students?",
+  "e.g., How does carbon pricing affect industrial emissions?",
+];
+
+// Hook for rotating placeholder text with typing animation
+function useRotatingPlaceholder(examples, intervalMs = 5000) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [displayText, setDisplayText] = useState('');
+  const [isTyping, setIsTyping] = useState(true);
+  const [showCursor, setShowCursor] = useState(false);
+
+  useEffect(() => {
+    if (examples.length <= 1) {
+      setDisplayText(examples[0] || '');
+      setIsTyping(false);
+      setShowCursor(false);
+      return;
+    }
+
+    const currentText = examples[currentIndex];
+    let charIndex = 0;
+    setDisplayText('');
+    setIsTyping(true);
+    setShowCursor(false);
+
+    // Typing animation
+    const typeInterval = setInterval(() => {
+      if (charIndex < currentText.length) {
+        setDisplayText(currentText.slice(0, charIndex + 1));
+        charIndex++;
+      } else {
+        clearInterval(typeInterval);
+        setIsTyping(false);
+        setShowCursor(true);
+        
+        // Wait longer before erasing - calculate time needed for full typing + display time
+        const typingTime = currentText.length * 75;
+        const displayTime = Math.max(3000, intervalMs - typingTime); // Ensure at least 3s display after typing
+        
+        setTimeout(() => {
+          setShowCursor(false);
+          // Quick erase effect
+          let eraseIndex = currentText.length;
+          const eraseInterval = setInterval(() => {
+            if (eraseIndex > 0) {
+              setDisplayText(currentText.slice(0, eraseIndex));
+              eraseIndex--;
+            } else {
+              clearInterval(eraseInterval);
+              setCurrentIndex((prevIndex) => (prevIndex + 1) % examples.length);
+            }
+          }, 25); // Slightly faster erase speed
+        }, displayTime);
+      }
+    }, 75); // Speed of typing (75ms per character)
+
+    return () => clearInterval(typeInterval);
+  }, [currentIndex, examples, intervalMs]);
+
+  return { text: displayText, isTyping, showCursor };
+}
 
 function IntroSettingPill({ icon, label }) {
   return (
@@ -34,8 +101,238 @@ function IntroSettingPill({ icon, label }) {
   );
 }
 
+/** Guidance text component for proper research question usage */
+function ResearchGuidance() {
+  return (
+    <div className="mb-5" style={{ maxWidth: 640 }}>
+      <h3 
+        className="mono text-xs font-medium mb-3"
+        style={{ 
+          color: 'var(--mut)', 
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase'
+        }}
+      >
+        Ask a Research Question
+      </h3>
+      
+      <div className="space-y-2 mb-3">
+        <div className="flex items-center gap-2">
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--cyan)', boxShadow: '0 0 10px var(--cyan)' }} />
+          <span className="text-sm font-medium" style={{ color: 'var(--fg)' }}>
+            Good:
+          </span>
+          <span 
+            className="text-sm"
+            style={{ color: 'var(--fg)' }}
+          >
+            "How does <span className="marker-half">sleep deprivation</span> affect <span className="marker-half">academic performance</span>?"
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--hot)', boxShadow: '0 0 10px var(--hot)' }} />
+          <span className="text-sm font-medium" style={{ color: 'var(--fg)' }}>
+            Not:
+          </span>
+          <span 
+            className="text-sm"
+            style={{ color: 'var(--fg)' }}
+          >
+            Your <span className="marker-half">full assignment brief</span>
+          </span>
+        </div>
+      </div>
+      
+      <p 
+        className="text-xs"
+        style={{ 
+          color: 'var(--mut2)', 
+          lineHeight: 1.4 
+        }}
+      >
+        <span className="marker-half">DeepResearch</span> finds sources and synthesizes research — <span className="marker-half">you write the essay</span>.
+      </p>
+    </div>
+  );
+}
+
+/** Assignment Brief Detection Modal */
+function AssignmentBriefModal({ 
+  isOpen, 
+  onClose, 
+  assignmentData, 
+  onQuestionSelect, 
+  onRunAnyway,
+  loading 
+}) {
+  if (!isOpen || !assignmentData) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div 
+        className="rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        style={{
+          background: 'var(--card)',
+          border: '1px solid var(--line-strong)',
+        }}
+      >
+        <div className="p-6 sm:p-8">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
+                style={{ background: 'var(--bg-2)' }}
+              >
+                👋
+              </div>
+              <div>
+                <h3 
+                  className="text-xl font-semibold"
+                  style={{ color: 'var(--fg)' }}
+                >
+                  That looks like a full assignment brief
+                </h3>
+                <p 
+                  className="text-sm mt-1"
+                  style={{ color: 'var(--mut)' }}
+                >
+                  Let's make this work better for you
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-lg transition-colors"
+              style={{ color: 'var(--mut2)' }}
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Explanation */}
+          <div 
+            className="rounded-xl p-4 mb-6"
+            style={{ background: 'var(--bg-2)', border: '1px solid var(--line)' }}
+          >
+            <p 
+              className="text-sm leading-relaxed"
+              style={{ color: 'var(--fg)' }}
+            >
+              <strong>DeepResearch works best with focused questions</strong> rather than full assignment instructions. 
+              This approach gives you more targeted research that you can use to build your complete response.
+            </p>
+          </div>
+
+          {/* Suggested Questions */}
+          <div className="mb-6">
+            <h4 
+              className="text-sm font-medium mb-4"
+              style={{ color: 'var(--fg)' }}
+            >
+              Here are some focused questions I extracted from your assignment:
+            </h4>
+            <div className="space-y-3">
+              {assignmentData.suggested_questions?.map((question, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => onQuestionSelect(question)}
+                  disabled={loading}
+                  className="w-full p-4 rounded-xl transition-all text-left group hover:scale-[1.01] hover:shadow-sm"
+                  style={{
+                    background: 'var(--paper)',
+                    border: '1px solid var(--line)',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.6 : 1,
+                    transform: 'translateZ(0)', // Fix for Safari
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div 
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0 mt-0.5"
+                      style={{ 
+                        background: 'var(--violet)', 
+                        color: 'white',
+                        boxShadow: '0 2px 8px rgba(124, 92, 255, 0.3)' 
+                      }}
+                    >
+                      {index + 1}
+                    </div>
+                    <span 
+                      className="text-sm leading-relaxed transition-colors"
+                      style={{ color: 'var(--fg)' }}
+                    >
+                      {question}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onRunAnyway}
+              disabled={loading}
+              className="flex-1 px-4 py-3 rounded-xl font-medium transition-colors"
+              style={{
+                border: '1px solid var(--line)',
+                background: 'var(--paper)',
+                color: 'var(--mut)',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              {loading ? 'Processing...' : 'Run it anyway'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (assignmentData.suggested_questions?.[0]) {
+                  onQuestionSelect(assignmentData.suggested_questions[0]);
+                }
+              }}
+              disabled={loading || !assignmentData.suggested_questions?.[0]}
+              className="flex-1 btn btn-new-research px-4 py-3 rounded-xl font-medium flex items-center justify-center gap-2"
+              style={{ 
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              {loading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <>
+                  Ask a question
+                  <Icon.Arrow />
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Helper Text */}
+          <p 
+            className="text-xs text-center mt-4"
+            style={{ color: 'var(--mut2)' }}
+          >
+            💡 <strong>Tip:</strong> You can always refine your question after seeing the results
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Large serif card + pills + Investigate (matches intro; optional PDF export in toolbar row). */
-function ResearchQueryComposer({
+const ResearchQueryComposer = React.forwardRef(({
   value,
   onChange,
   onSubmit,
@@ -50,14 +347,25 @@ function ResearchQueryComposer({
   onExportPdf,
   formClassName = '',
   submitDisabled,
-}) {
+  enableRotatingPlaceholder = false,
+}, ref) => {
+  const rotatingPlaceholder = useRotatingPlaceholder(RESEARCH_EXAMPLES, 5000);
+  
   const quotaLocked = submitDisabled === true;
   const disabled =
     loading || !String(value || '').trim() || quotaLocked;
 
   return (
     <form onSubmit={onSubmit} className={formClassName}>
+      {/* Add CSS for blinking cursor animation */}
+      <style>{`
+        @keyframes blink {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0; }
+        }
+      `}</style>
       <div
+        ref={ref}
         style={{
           padding: 18,
           borderRadius: 16,
@@ -66,35 +374,74 @@ function ResearchQueryComposer({
           boxShadow: '0 30px 60px -30px rgba(124, 92, 255, 0.4)',
         }}
       >
-        <textarea
-          value={value}
-          onChange={onChange}
-          autoFocus={autoFocus}
-          rows={3}
-          placeholder={placeholder}
-          disabled={loading || quotaLocked}
-          className="placeholder:opacity-55"
-          style={{
-            width: '100%',
-            resize: 'none',
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            color: 'var(--fg)',
-            fontFamily: "'Instrument Serif', Georgia, serif",
-            fontSize: 'clamp(22px, 3.2vw, 28px)',
-            lineHeight: 1.25,
-            letterSpacing: '-0.01em',
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              if (!disabled) {
-                onSubmit(e);
+        <div style={{ position: 'relative' }}>
+          <textarea
+            value={value}
+            onChange={onChange}
+            autoFocus={autoFocus}
+            rows={3}
+            placeholder={enableRotatingPlaceholder ? '' : placeholder}
+            disabled={loading || quotaLocked}
+            className="placeholder:opacity-55"
+            style={{
+              width: '100%',
+              resize: 'none',
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              color: 'var(--fg)',
+              fontFamily: "'Instrument Serif', Georgia, serif",
+              fontSize: 'clamp(22px, 3.2vw, 28px)',
+              lineHeight: 1.25,
+              letterSpacing: '-0.01em',
+              position: 'relative',
+              zIndex: 2,
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!disabled) {
+                  onSubmit(e);
+                }
               }
-            }
-          }}
-        />
+            }}
+          />
+          {enableRotatingPlaceholder && !value && (
+            <div 
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'flex-start',
+                paddingTop: '0.125em',
+                opacity: 0.55,
+                color: 'var(--mut)',
+                fontFamily: "'Instrument Serif', Georgia, serif",
+                fontSize: 'clamp(22px, 3.2vw, 28px)',
+                lineHeight: 1.25,
+                letterSpacing: '-0.01em',
+                zIndex: 1,
+              }}
+            >
+              {rotatingPlaceholder.text}
+              {rotatingPlaceholder.showCursor && (
+                <span 
+                  style={{ 
+                    marginLeft: '1px',
+                    animation: 'blink 1s infinite',
+                    fontWeight: 'normal'
+                  }}
+                >
+                  |
+                </span>
+              )}
+            </div>
+          )}
+        </div>
         <div className="mt-3.5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             <IntroSettingPill icon="◇" label="Depth · standard" />
@@ -168,7 +515,7 @@ function ResearchQueryComposer({
       </p>
     </form>
   );
-}
+});
 
 const ResearchPage = () => {
   const { researchCreationBlocked, refreshUsageQuota, usageQuota } = useAuth();
@@ -188,9 +535,18 @@ const ResearchPage = () => {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showResearchLibrary, setShowResearchLibrary] = useState(false);
   const [pageStartTime] = useState(Date.now());
+  const [showAssignmentBriefModal, setShowAssignmentBriefModal] = useState(false);
+  const [assignmentBriefData, setAssignmentBriefData] = useState(null);
+  const [originalAssignmentQuery, setOriginalAssignmentQuery] = useState('');
+  const [showOnboardingTooltip, setShowOnboardingTooltip] = useState(false);
+  const inputContainerRef = useRef(null);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const convoIdFromUrl = searchParams.get('convo_id');
+  /** Immersive first step: no sidebar until the user sends a query (unless opening an existing conversation). */
+  const showFullScreenIntro = messages.length === 0 && !convoIdFromUrl;
 
   useEffect(() => {
     let cancelled = false;
@@ -204,9 +560,23 @@ const ResearchPage = () => {
     };
   }, [refreshUsageQuota]);
 
-  const convoIdFromUrl = searchParams.get('convo_id');
-  /** Immersive first step: no sidebar until the user sends a query (unless opening an existing conversation). */
-  const showFullScreenIntro = messages.length === 0 && !convoIdFromUrl;
+  // Check if user should see onboarding tooltip
+  useEffect(() => {
+    const hasSeenTooltip = localStorage.getItem('hasSeenResearchTooltip');
+    // Show tooltip only on the full-screen intro (first visit, no existing conversation)
+    if (!hasSeenTooltip && showFullScreenIntro && !loading) {
+      // Small delay to ensure the page has rendered
+      const timer = setTimeout(() => {
+        setShowOnboardingTooltip(true);
+        // Track that the tooltip was shown
+        analyticsService.track('onboarding_tooltip_shown', {
+          page_type: 'research_intro',
+          time_to_show_ms: Date.now() - pageStartTime
+        });
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [showFullScreenIntro, loading, pageStartTime]);
 
   const loadConversation = useCallback(async (convoId) => {
     const startTime = Date.now();
@@ -287,8 +657,8 @@ const ResearchPage = () => {
     }
   }, [messages]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e, forceProcess = false) => {
+    e?.preventDefault();
     if (researchCreationBlocked || !inputValue.trim() || loading) return;
 
     const startTime = Date.now();
@@ -312,7 +682,8 @@ const ResearchPage = () => {
       const requestBody = {
         prompt: queryText,
         conversation_id: conversationId || undefined,
-        folder_id: folderId || undefined
+        folder_id: folderId || undefined,
+        force_process: forceProcess
       };
 
       const response = await apiFetch(config.endpoints.research, {
@@ -339,15 +710,39 @@ const ResearchPage = () => {
         }
         
         if (data.new_messages && data.new_messages.length > 0) {
-          setMessages(prev => [...prev, ...data.new_messages]);
-          
-          // Track successful research response
-          analyticsService.trackSearchResults(
-            queryText,
-            data.new_messages.length,
-            processingTime,
-            data.sources || []
-          );
+          // Check if the response contains assignment brief guidance
+          const lastMessage = data.new_messages[data.new_messages.length - 1];
+          if (lastMessage?.metadata?.assignment_guidance && !forceProcess) {
+            // Show assignment brief modal instead of displaying the message
+            setOriginalAssignmentQuery(queryText);
+            setAssignmentBriefData({
+              message: "This looks like an assignment brief! DeepResearch works best with focused research questions rather than full assignment instructions.",
+              suggested_questions: lastMessage.metadata.suggested_questions || [],
+              can_proceed: true
+            });
+            setShowAssignmentBriefModal(true);
+            
+            // Remove the user message since we're showing the modal instead
+            setMessages(prev => prev.slice(0, -1));
+            
+            // Track assignment brief detection
+            analyticsService.track('assignment_brief_detected', {
+              word_count: lastMessage.metadata.original_word_count,
+              conversation_id: data.conversation_id,
+              suggested_questions_count: lastMessage.metadata.suggested_questions?.length || 0
+            });
+          } else {
+            // Normal flow - add messages to conversation
+            setMessages(prev => [...prev, ...data.new_messages]);
+            
+            // Track successful research response
+            analyticsService.trackSearchResults(
+              queryText,
+              data.new_messages.length,
+              processingTime,
+              data.sources || []
+            );
+          }
         }
         const t = await getSupabaseAccessToken();
         if (t) await refreshUsageQuota(t);
@@ -370,6 +765,71 @@ const ResearchPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Assignment brief modal handlers
+  const handleAssignmentQuestionSelect = (question) => {
+    setInputValue(question);
+    setShowAssignmentBriefModal(false);
+    setAssignmentBriefData(null);
+    
+    // Track question selection
+    analyticsService.track('assignment_question_selected', {
+      original_query: originalAssignmentQuery,
+      selected_question: question,
+      conversation_id: conversationId
+    });
+    
+    // Auto-submit the selected question
+    setTimeout(() => {
+      if (conversationId) {
+        // Use followup handler for existing conversations
+        handleSubmitFollowup(question);
+      } else {
+        // Use main submit handler for new conversations
+        const event = { preventDefault: () => {} };
+        handleSubmit(event);
+      }
+    }, 100);
+  };
+
+  const handleRunAnyway = () => {
+    setInputValue(originalAssignmentQuery);
+    setShowAssignmentBriefModal(false);
+    setAssignmentBriefData(null);
+    
+    // Track "run anyway" action
+    analyticsService.track('assignment_run_anyway', {
+      original_query: originalAssignmentQuery,
+      conversation_id: conversationId
+    });
+    
+    // Submit with force flag
+    setTimeout(() => {
+      if (conversationId) {
+        // Use followup handler for existing conversations
+        handleSubmitFollowup(originalAssignmentQuery, true);
+      } else {
+        // Use main submit handler for new conversations
+        const event = { preventDefault: () => {} };
+        handleSubmit(event, true);
+      }
+    }, 100);
+  };
+
+  const handleAssignmentModalClose = () => {
+    setShowAssignmentBriefModal(false);
+    setAssignmentBriefData(null);
+    setOriginalAssignmentQuery('');
+  };
+
+  const handleTooltipDismiss = () => {
+    setShowOnboardingTooltip(false);
+    // Track that user has seen the onboarding tooltip
+    analyticsService.track('onboarding_tooltip_dismissed', {
+      time_on_page_ms: Date.now() - pageStartTime,
+      page_type: 'research_intro'
+    });
   };
 
   const handleDeleteResearch = async () => {
@@ -475,7 +935,7 @@ const ResearchPage = () => {
     setCustomFollowUpQuery('');
   };
 
-  const handleSubmitFollowup = async (query) => {
+  const handleSubmitFollowup = async (query, forceProcess = false) => {
     if (researchCreationBlocked || !query.trim() || loading) return;
 
     setLoading(true);
@@ -486,7 +946,8 @@ const ResearchPage = () => {
       const requestBody = {
         prompt: query,
         conversation_id: conversationId || undefined,
-        folder_id: folderId || undefined
+        folder_id: folderId || undefined,
+        force_process: forceProcess
       };
 
       const response = await apiFetch(`${config.API_BASE_URL}/research`, {
@@ -508,7 +969,23 @@ const ResearchPage = () => {
         }
         
         if (data.new_messages && data.new_messages.length > 0) {
-          setMessages(prev => [...prev, ...data.new_messages]);
+          // Check if the response contains assignment brief guidance
+          const lastMessage = data.new_messages[data.new_messages.length - 1];
+          if (lastMessage?.metadata?.assignment_guidance && !forceProcess) {
+            // Show assignment brief modal instead of displaying the message
+            setOriginalAssignmentQuery(query);
+            setAssignmentBriefData({
+              message: "This looks like an assignment brief! DeepResearch works best with focused research questions rather than full assignment instructions.",
+              suggested_questions: lastMessage.metadata.suggested_questions || [],
+              can_proceed: true
+            });
+            setShowAssignmentBriefModal(true);
+            
+            // Remove the user message since we're showing the modal instead
+            setMessages(prev => prev.slice(0, -1));
+          } else {
+            setMessages(prev => [...prev, ...data.new_messages]);
+          }
         }
         const t = await getSupabaseAccessToken();
         if (t) await refreshUsageQuota(t);
@@ -621,15 +1098,18 @@ const ResearchPage = () => {
                     </button>
                   </div>
                 ) : (
-                  <ResearchQueryComposer
-                    formClassName="mt-7"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onSubmit={handleSubmit}
-                    loading={loading}
-                    autoFocus
-                    placeholder="e.g. How are personalized neoantigen vaccines reshaping melanoma treatment outcomes?"
-                  />
+                  <div className="mt-7">
+                    <ResearchGuidance />
+                    <ResearchQueryComposer
+                      ref={inputContainerRef}
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onSubmit={handleSubmit}
+                      loading={loading}
+                      autoFocus
+                      enableRotatingPlaceholder={true}
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -1041,6 +1521,16 @@ const ResearchPage = () => {
         <ResearchLibrary onClose={() => setShowResearchLibrary(false)} />
       )}
 
+      {/* Assignment Brief Modal */}
+      <AssignmentBriefModal
+        isOpen={showAssignmentBriefModal}
+        onClose={handleAssignmentModalClose}
+        assignmentData={assignmentBriefData}
+        onQuestionSelect={handleAssignmentQuestionSelect}
+        onRunAnyway={handleRunAnyway}
+        loading={loading}
+      />
+
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1068,6 +1558,13 @@ const ResearchPage = () => {
           </div>
         </div>
       )}
+
+      {/* Onboarding Tooltip */}
+      <OnboardingTooltip
+        show={showOnboardingTooltip}
+        targetRef={inputContainerRef}
+        onDismiss={handleTooltipDismiss}
+      />
     </div>
   );
 };
