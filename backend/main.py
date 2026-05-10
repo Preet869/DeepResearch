@@ -201,6 +201,7 @@ class ResearchRequest(BaseModel):
     prompt: str = Field(..., max_length=5000)
     conversation_id: Optional[int] = None
     folder_id: Optional[int] = None
+    force_process: Optional[bool] = False
 
 class FolderCreate(BaseModel):
     name: str
@@ -736,6 +737,40 @@ async def generate_title(prompt: str) -> str:
         return call_claude(system, prompt, max_tokens=15).strip().strip('"')
     except Exception:
         return "New Research"
+
+
+async def extract_research_questions(assignment_text: str) -> List[str]:
+    """Extract 2-3 focused research questions from an assignment brief."""
+    system = """You are a research assistant helping students convert assignment briefs into focused research questions.
+
+Extract 2-3 specific, answerable research questions from the provided assignment text.
+Each question should:
+- Be specific and focused (not too broad)
+- Be answerable through research
+- Help break down the larger assignment
+
+Return ONLY a JSON array of strings, no explanation:
+["question 1", "question 2", "question 3"]"""
+
+    user = f"""Assignment text:
+{assignment_text[:2000]}
+
+Extract 2-3 focused research questions from this assignment."""
+
+    try:
+        raw = call_claude(system, user, max_tokens=200)
+        clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        questions = json.loads(clean)
+        if isinstance(questions, list):
+            return [q for q in questions if isinstance(q, str) and len(q.strip()) > 10][:3]
+        return []
+    except Exception as e:
+        logger.error("Research question extraction failed: %s", e)
+        return [
+            "What are the main factors contributing to this topic?",
+            "What does current research say about this issue?",
+            "What are the practical implications and recommendations?"
+        ]
 
 
 async def summarize_conversation(history: List[Dict[str, str]]) -> str:
@@ -1756,12 +1791,64 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
 
         # Track assignment brief detection (500+ words likely indicates assignment paste)
         word_count = len(body.prompt.split())
-        if word_count >= 500:
+        if word_count >= 500 and not body.force_process:
             _insert_usage_event(
                 uid,
                 "assignment_brief_detected",
                 {
-                    "prompt_length": len(body.prompt),
+                    "word_count": word_count,
+                    "endpoint": "research"
+                }
+            )
+            
+            # Return helpful guidance instead of processing the assignment directly
+            logger.info("Assignment brief detected (%d words), providing guidance", word_count)
+            suggested_questions = await extract_research_questions(body.prompt)
+            
+            guidance_message = {
+                "message": "This looks like an assignment brief! DeepResearch works best with focused research questions rather than full assignment instructions.",
+                "explanation": "To get the most helpful results, try asking specific questions about parts of your assignment. This approach will give you more targeted research that you can use to build your complete response.",
+                "suggested_questions": suggested_questions,
+                "can_proceed": True,
+                "note": "You can still search with your original text if you prefer, but focused questions usually work better."
+            }
+            
+            # Save the guidance as an assistant message
+            guidance_content = f"""**Assignment Brief Detected**
+
+{guidance_message['message']} {guidance_message['explanation']}
+
+**Here are some focused questions I extracted from your assignment:**
+
+{chr(10).join(f"• {q}" for q in suggested_questions)}
+
+**Tip:** {guidance_message['note']}
+
+*If you'd like to proceed with your original text anyway, just send it again and I'll research it as-is.*"""
+
+            guidance_metadata = {
+                "assignment_guidance": True,
+                "suggested_questions": suggested_questions,
+                "original_word_count": word_count
+            }
+            
+            message_to_save = {
+                "conversation_id": convo_id,
+                "role": "assistant", 
+                "model_name": "DeepResearch Guidance",
+                "content": guidance_content,
+                "metadata": guidance_metadata,
+            }
+            message_res = db.table("messages").insert(message_to_save).execute()
+            
+            return {"conversation_id": convo_id, "new_messages": message_res.data}
+
+        # Track forced processing of assignment briefs
+        if word_count >= 500 and body.force_process:
+            _insert_usage_event(
+                uid,
+                "assignment_brief_forced",
+                {
                     "word_count": word_count,
                     "endpoint": "research"
                 }

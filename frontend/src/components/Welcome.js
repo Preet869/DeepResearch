@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { config } from '../config';
 import { Icon, FrameDivider, HandArrow, TopNav, PIPELINE_STEP_DOT_COLORS } from './shared';
+import HowToUse from './HowToUse';
 
 function Welcome() {
   const navigate = useNavigate();
@@ -112,8 +113,10 @@ function Welcome() {
                 fontSize: 20, lineHeight: 1.5, color: 'var(--mut)',
                 maxWidth: 520, margin: 0
               }}>
-                Type any question. DeepResearch reads the web, synthesizes sources,
-                draws the charts, and hands you a citation-ready report you can defend.
+                Ask a research question. DeepResearch finds credible sources,
+                synthesizes evidence, and gives you a report with real citations.
+                <br /><br />
+                You still write the essay — we just make the research 10x faster.
               </p>
 
               {/* Auth CTA Button - replacing the search form */}
@@ -193,6 +196,9 @@ function Welcome() {
           </div>
         </div>
       </section>
+
+      {/* HOW TO USE DEEPRESEARCH */}
+      <HowToUse />
 
       {/* HOW IT WORKS — editorial spread */}
       <section style={{ padding: '40px 48px 40px' }}>

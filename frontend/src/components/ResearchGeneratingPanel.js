@@ -143,7 +143,7 @@ function ResearchGeneratingPanel({ query }) {
             textAlign: 'center',
           }}
         >
-          You can leave this tab — we save the report to your library when it finishes.
+          Drafting the report takes some time, please be patient.
         </p>
       </div>
       <style>{`@keyframes research-pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }`}</style>
