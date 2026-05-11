@@ -604,7 +604,7 @@ function Pillar({ num, title, body, tint, chip }) {
 function Pipeline() {
   const steps = [
     { n: '01', t: 'You ask', d: 'Type any research question — natural language, no syntax.' },
-    { n: '02', t: 'We read', d: 'Claude searches live academic sources and ranks by credibility. Verifies every citation. Removes duplicates.\n\nTakes 60-90 seconds — we don\'t use cached answers like ChatGPT.' },
+    { n: '02', t: 'We read', d: 'Claude searches live academic sources and ranks by credibility. Verifies every citation.' },
     { n: '03', t: 'It compiles', d: 'A structured research brief with summaries, evidence, and counter-arguments.' },
     { n: '04', t: 'You use it', d: 'Export to PDF or Word to reference while writing. Or ask follow-ups to go deeper.' },
   ].map((s, i) => ({ ...s, c: PIPELINE_STEP_DOT_COLORS[i] }));
