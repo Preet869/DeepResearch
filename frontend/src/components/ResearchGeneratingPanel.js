@@ -23,11 +23,11 @@ function ResearchGeneratingPanel({ query }) {
 
   const stages = [
     { p: 0, l: 'Parsing question' },
-    { p: 20, l: 'Searching the web' },
-    { p: 45, l: 'Reading sources' },
-    { p: 70, l: 'Cross-referencing claims' },
-    { p: 85, l: 'Drafting report' },
-    { p: 92, l: 'Finalizing content' },
+    { p: 15, l: 'Searching the web' },
+    { p: 35, l: 'Reading sources' },
+    { p: 55, l: 'Cross-referencing claims' },
+    { p: 75, l: 'Drafting report' },
+    { p: 88, l: 'Finalizing content' },
   ];
 
   useEffect(() => {
@@ -36,23 +36,25 @@ function ResearchGeneratingPanel({ query }) {
     
     const t = setInterval(() => {
       setProgress((p) => {
-        // Progressive realistic loading that never completes
-        if (p < 20) {
-          return p + 3 + Math.random() * 2; // Fast start (searching)
-        } else if (p < 45) {
-          return p + 2 + Math.random() * 1.5; // Reading sources
-        } else if (p < 70) {
-          return p + 1.5 + Math.random() * 1; // Processing facts
-        } else if (p < 85) {
-          return p + 0.8 + Math.random() * 0.7; // Generating report
-        } else if (p < 92) {
-          return p + 0.4 + Math.random() * 0.3; // Almost done, slow down
+        // Progressive realistic loading calibrated for 90+ seconds
+        if (p < 15) {
+          return p + 0.8 + Math.random() * 0.4; // Slower start (searching) - ~18 seconds to reach 15%
+        } else if (p < 35) {
+          return p + 0.6 + Math.random() * 0.3; // Reading sources - ~33 seconds to reach 35%
+        } else if (p < 55) {
+          return p + 0.5 + Math.random() * 0.25; // Processing facts - ~40 seconds to reach 55%
+        } else if (p < 75) {
+          return p + 0.4 + Math.random() * 0.2; // Generating report - ~50 seconds to reach 75%
+        } else if (p < 88) {
+          return p + 0.25 + Math.random() * 0.15; // Almost done, slow down - ~70 seconds to reach 88%
+        } else if (p < 95) {
+          return p + 0.15 + Math.random() * 0.1; // Final stages - ~85 seconds to reach 95%
         } else {
-          // After 92%, very slow progress that never reaches 100%
-          return Math.min(98, p + Math.random() * 0.2);
+          // After 95%, very slow progress that never reaches 100% - continues past 90 seconds
+          return Math.min(99, p + Math.random() * 0.08);
         }
       });
-    }, 600); // Consistent 600ms interval
+    }, 800); // Slower 800ms interval to extend duration further
     
     return () => clearInterval(t);
   }, [query]);
@@ -195,9 +197,12 @@ function ResearchGeneratingPanel({ query }) {
               color: 'var(--mut)',
               letterSpacing: '.04em',
               marginTop: 8,
+              fontWeight: 600,
             }}
           >
-            Drafting the report takes some time, please be patient.
+            <span className="marker-half">Beta</span>: We're optimizing <span className="marker-half">speed</span> while maintaining <span className="marker-half">quality</span>.
+            <br />
+            Your report will be <span className="marker-half">comprehensive</span> and <span className="marker-half">citation-ready</span>.
           </p>
         </div>
       </div>

@@ -1128,9 +1128,9 @@ const ResearchPage = () => {
                       }}>
                         <span style={{ fontSize: 16 }}></span>
                         <div>
-                          <span style={{ fontWeight: 600, color: 'var(--fg)' }}>Takes 45-60 seconds</span>
+                          <span style={{ fontWeight: 600, color: 'var(--fg)' }}>Takes 60-90 seconds</span>
                           <span style={{ margin: '0 8px', opacity: 0.5 }}>—</span>
-                          <span>Deep research takes time — we're searching live sources, not using cached answers.</span>
+                          <span>We search live sources and verify every citation — quality takes time.</span>
                         </div>
                       </div>
                     </div>
