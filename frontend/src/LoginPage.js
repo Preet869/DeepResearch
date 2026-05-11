@@ -410,7 +410,7 @@ const LoginPage = () => {
                   <Field 
                     label="Last Name" 
                     type="text" 
-                    placeholder="Ali Mazari" 
+                    placeholder="Mazari" 
                     value={lastName} 
                     onChange={setLastName}
                     disabled={loading || (isSignUp && betaSignupStatus === 'error')}

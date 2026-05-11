@@ -165,6 +165,88 @@ function Welcome() {
         </div>
       </section>
 
+      {/* ETHICAL USAGE CALLOUT */}
+      <section style={{ padding: '40px 48px 40px' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', justifyContent: 'center' }}>
+          <div className="card" style={{
+            padding: '40px 60px',
+            textAlign: 'center',
+            background: 'linear-gradient(135deg, var(--bg) 0%, var(--bg-2) 100%)',
+            border: '2px solid var(--line-strong)',
+            maxWidth: 800,
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            {/* subtle accent background */}
+            <div style={{
+              position: 'absolute', top: -60, right: -60, width: 200, height: 200,
+              borderRadius: '50%', background: 'var(--hot)', opacity: .08, filter: 'blur(30px)', pointerEvents: 'none'
+            }} />
+            
+            <div className="sticker" style={{ 
+              marginBottom: 24, 
+              backgroundColor: 'var(--hot)', 
+              color: 'white',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '.1em'
+            }}>
+              IMPORTANT
+            </div>
+            
+            <h3 className="serif" style={{ 
+              fontSize: 'clamp(28px, 3.5vw, 36px)', 
+              lineHeight: 1.2, 
+              letterSpacing: '-.02em',
+              marginBottom: 20,
+              color: 'var(--fg)'
+            }}>
+              USE IT <span className="marker-half">ETHICALLY</span>
+            </h3>
+            
+            <p style={{ 
+              fontSize: 16, 
+              lineHeight: 1.6, 
+              color: 'var(--mut)',
+              marginBottom: 28,
+              maxWidth: 600,
+              margin: '0 auto 28px'
+            }}>
+              The report structure and sources are AI-generated.<br />
+              The essay you submit should be <span style={{ fontWeight: 600, color: 'var(--fg)' }}>YOUR words</span>, <span style={{ fontWeight: 600, color: 'var(--fg)' }}>YOUR analysis</span>.
+            </p>
+
+            <div style={{ 
+              fontSize: 14, 
+              lineHeight: 1.7, 
+              color: 'var(--mut)',
+              marginBottom: 24,
+              maxWidth: 500,
+              margin: '0 auto 24px'
+            }}>
+              <div style={{ marginBottom: 8 }}>
+                <span style={{ color: 'var(--hot)', marginRight: 8 }}>→</span>
+                <span>Google Scholar finds sources — you still write</span>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <span style={{ color: 'var(--hot)', marginRight: 8 }}>→</span>
+                <span>DeepResearch finds sources AND explains them — you still write</span>
+              </div>
+            </div>
+            
+            <p style={{ 
+              fontSize: 15, 
+              lineHeight: 1.5, 
+              color: 'var(--fg)',
+              fontWeight: 600,
+              marginTop: 8
+            }}>
+              Use the research. Write your own essay.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* PILLARS */}
       <section style={{ padding: '80px 48px 32px' }}>
         <div style={{ maxWidth: 1400, margin: '0 auto' }}>
@@ -174,16 +256,25 @@ function Welcome() {
           }}>
             <Pillar
               num="01"
-              title="A real report"
+              title="A research foundation"
               tint="var(--violet)"
-              body="Executive summary, literature review, critical analysis, charts and APA citations — the whole structure your professor expects."
-              chip="report.pdf" />
+              body="Summaries of key findings, analysis of sources, charts with real data, and APA citations.
+
+Background research organized for you.
+
+Understand your topic. Then write your essay."
+              chip="Research foundation" />
             
             <Pillar
               num="02"
               title="Citations from real sources"
               tint="var(--cyan)"
-              body="APA references track the pages and articles DeepResearch pulled from the live web—not invented titles or phantom links you cannot verify."
+              body="Peer-reviewed journals (.edu, NCBI, Nature)
+Government reports (.gov, WHO, UN)
+Academic institutions (Stanford, MIT)
+Reputable news sources (Reuters, BBC, NYT)
+
+Every URL is clickable. Every citation is verifiable."
               chip="APA · live retrieval" />
             
             <Pillar
@@ -241,7 +332,7 @@ function Welcome() {
             }}>
               Stop Googling at 3am. Start researching smarter.
               <br />
-              5 free reports for <span className="marker-half">students</span> — 50 beta spots total.
+              5 free reports per <span className="marker-half">students</span> — 50 beta spots total.
             </p>
             
             <button 
@@ -345,7 +436,7 @@ function BetaSeatsHeading({ state }) {
     return (
       <div className="serif" style={serif}>
         Beta trial — <span style={{ fontStyle: 'italic', color: accent }}>limited rollout</span><br />
-        <span className="marker">{lim}</span> founder spots — join while signups stay open.
+        <span className="marker">{lim}</span> spots — join while signups stay open.
       </div>
     );
   }
@@ -361,8 +452,8 @@ function BetaSeatsHeading({ state }) {
 
   return (
     <div className="serif" style={serif}>
-      Beta trial — <span style={{ fontStyle: 'italic', color: accent }}>spots remaining</span><br />
-      <span className="marker">{state.spotsRemaining}</span>
+      Beta trial — <span style={{ fontStyle: 'italic', color: accent }}>limited rollout</span><br />
+      <span style={{ fontStyle: 'italic', color:'black' }}>spots remaining</span><br /><span className="marker">{state.spotsRemaining}</span>
       {' of '}
       {lim}
     </div>
@@ -395,41 +486,77 @@ function HeroCollage() {
         </div>
       </div>
 
-      {/* main report card */}
+      {/* main content card */}
       <div className="card" style={{
-        position: 'absolute', top: 10, left: 0, width: 500,
+        position: 'absolute', top: 10, left: 20, width: 500,
         padding: 30, transform: 'rotate(2deg)',
         boxShadow: '0 20px 40px -20px rgba(124,92,255,.2)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span className="sticker"><span className="dot-3" /> Generated · 17s</span>
-          <span className="mono" style={{ fontSize: 10, color: 'var(--mut2)' }}>r-2407</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <span className="sticker"><span className="dot-3" /> Ready to use</span>
+          <span className="mono" style={{ fontSize: 10, color: 'var(--mut2)' }}>v1.4</span>
         </div>
-        <div className="serif" style={{ fontSize: 32, lineHeight: 1.1, letterSpacing: '-.015em' }}>
-          The future of <span style={{ fontStyle: 'italic', color: 'var(--violet)' }}>AI-powered</span> research
+        
+        <div className="serif" style={{ fontSize: 32, lineHeight: 1.1, letterSpacing: '-.015em', marginBottom: 20 }}>
+          Academic research, <span style={{ fontStyle: 'italic', color: 'var(--violet)' }}>simplified</span>
         </div>
-        <p style={{ marginTop: 16, fontSize: 16, lineHeight: 1.55, color: 'var(--mut)' }}>
-          Advanced AI systems have demonstrated a <span className="marker" style={{ color: 'var(--fg)' }}>67% improvement</span> in
-          research synthesis speed<span className="cite">12</span>, with emerging applications
-          spanning multiple academic disciplines<span className="cite">7</span>.
+        
+        <p style={{ fontSize: 16, lineHeight: 1.6, color: 'var(--mut)', marginBottom: 24 }}>
+          DeepResearch turns research questions into structured academic reports with real citations.
         </p>
 
-        {/* tiny chart */}
-        <div style={{ marginTop: 20, height: 100, padding: 14, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
-          <svg viewBox="0 0 280 72" width="100%" height="100%">
-            <path d="M0 60 L30 54 L60 48 L90 46 L120 40 L150 32 L180 28 L210 22 L240 18 L280 14"
-              stroke="var(--violet)" strokeWidth="3" fill="none" strokeLinecap="round" />
-            <path d="M0 60 L30 54 L60 48 L90 46 L120 40 L150 32 L180 28 L210 22 L240 18 L280 14 L280 72 L0 72 Z"
-              fill="var(--violet)" opacity=".18" style={{ fill: "rgb(242, 129, 29)" }} />
-            {[0, 30, 60, 90, 120, 150, 180, 210, 240, 280].map((x, i) => {
-              const ys = [60, 54, 48, 46, 40, 32, 28, 22, 18, 14];
-              return <circle key={i} cx={x} cy={ys[i]} r="3" fill="var(--violet)" />;
-            })}
-          </svg>
+        <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--mut)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 8 }}>
+            <span style={{ color: 'var(--violet)', marginRight: 8, fontWeight: 'bold' }}>✓</span>
+            <span>Searches academic databases and credible sources</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 8 }}>
+            <span style={{ color: 'var(--violet)', marginRight: 8, fontWeight: 'bold' }}>✓</span>
+            <span>Summarizes key findings and organizes sources</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 8 }}>
+            <span style={{ color: 'var(--violet)', marginRight: 8, fontWeight: 'bold' }}>✓</span>
+            <span>Creates data visualizations from real numbers</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 8 }}>
+            <span style={{ color: 'var(--violet)', marginRight: 8, fontWeight: 'bold' }}>✓</span>
+            <span>Provides APA citations you can verify</span>
+          </div>
         </div>
-        <div className="mono" style={{ marginTop: 8, fontSize: 12, color: 'var(--mut2)', letterSpacing: '.04em' }}>
-          fig. 1 — research automation adoption, 2020–2026
-        </div>
+
+        <p style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--fg)', marginTop: 20, fontWeight: 500 }}>
+          From question to citation-ready report in minutes.
+        </p>
+
+        <button
+          style={{
+            marginTop: 24,
+            padding: '12px 20px',
+            backgroundColor: 'rgb(242, 129, 29)',
+            color: 'white',
+            border: 'none',
+            borderRadius: 8,
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: 'Geist, sans-serif',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            boxShadow: '0 2px 8px rgba(242, 129, 29, 0.3)',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseOver={(e) => {
+            e.target.style.transform = 'translateY(-1px)';
+            e.target.style.boxShadow = '0 4px 12px rgba(242, 129, 29, 0.4)';
+          }}
+          onMouseOut={(e) => {
+            e.target.style.transform = 'translateY(0)';
+            e.target.style.boxShadow = '0 2px 8px rgba(242, 129, 29, 0.3)';
+          }}
+        >
+          Start researching
+        </button>
       </div>
 
       {/* tiny floating sticker */}
@@ -446,7 +573,7 @@ function HeroCollage() {
       </div>
 
       {/* scribble arrow */}
-      <div className="welcome-collage-arrow" style={{ position: 'absolute', top: 220, left: -10 }}>
+      <div className="welcome-collage-arrow" style={{ position: 'absolute', top: 300, left: -43 }}>
         <HandArrow rotate={20} color="var(--cyan)" />
       </div>
     </div>
@@ -477,9 +604,9 @@ function Pillar({ num, title, body, tint, chip }) {
 function Pipeline() {
   const steps = [
     { n: '01', t: 'You ask', d: 'Type any research question — natural language, no syntax.' },
-    { n: '02', t: 'We read', d: 'Tavily pulls live sources; Claude 4.6 ranks and de-duplicates.' },
-    { n: '03', t: 'It writes', d: 'A structured report with charts, evidence, counter-points.' },
-    { n: '04', t: 'You ship', d: 'Export to PDF, Markdown, JSON. Or branch into follow-ups.' },
+    { n: '02', t: 'We read', d: 'Claude searches live academic sources and ranks by credibility. Verifies every citation. Removes duplicates.' },
+    { n: '03', t: 'It compiles', d: 'A structured research brief with summaries, evidence, and counter-arguments.' },
+    { n: '04', t: 'You use it', d: 'Export to PDF or Word to reference while writing. Or ask follow-ups to go deeper.' },
   ].map((s, i) => ({ ...s, c: PIPELINE_STEP_DOT_COLORS[i] }));
 
   return (

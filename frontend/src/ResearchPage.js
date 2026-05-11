@@ -1112,6 +1112,28 @@ const ResearchPage = () => {
                       autoFocus
                       enableRotatingPlaceholder={true}
                     />
+                    
+                    {/* Timing Callout */}
+                    <div className="flex justify-center mt-6">
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '14px 20px',
+                        background: 'var(--bg-2)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 12,
+                        fontSize: 14,
+                        color: 'var(--mut)'
+                      }}>
+                        <span style={{ fontSize: 16 }}></span>
+                        <div>
+                          <span style={{ fontWeight: 600, color: 'var(--fg)' }}>Takes 45-60 seconds</span>
+                          <span style={{ margin: '0 8px', opacity: 0.5 }}>—</span>
+                          <span>Deep research takes time — we're searching live sources, not using cached answers.</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
