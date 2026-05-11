@@ -1,33 +1,69 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from './shared';
 
+const funFacts = [
+  "Did you know? The average person spends 2.5 hours a day researching things online.",
+  "Fun fact: Google processes over 8.5 billion searches per day!",
+  "Research tip: 90% of the world's data was created in the last 2 years.",
+  "Did you know? The first search engine was called Archie, created in 1990.",
+  "Fun fact: Wikipedia has over 6 million articles in English alone!",
+  "Research insight: Peer review was first used in 1665 by the Royal Society.",
+  "Did you know? The term 'surfing the web' was coined in 1992.",
+  "Fun fact: Academic papers cite an average of 45 other sources.",
+];
+
+
 /**
  * Progress is illustrative only: the API does not stream completion %.
- * The bar advances slowly toward ~92% while this component is mounted, then resets on unmount.
+ * The bar advances slowly toward ~69% while this component is mounted, then resets on unmount.
  */
 function ResearchGeneratingPanel({ query }) {
   const [progress, setProgress] = useState(0);
+  const [funFactIndex, setFunFactIndex] = useState(0);
 
   const stages = [
     { p: 0, l: 'Parsing question' },
-    { p: 18, l: 'Searching the web' },
-    { p: 42, l: 'Reading sources' },
-    { p: 64, l: 'Cross-referencing claims' },
-    { p: 82, l: 'Drafting report' },
-    { p: 96, l: 'Drawing charts' },
+    { p: 20, l: 'Searching the web' },
+    { p: 45, l: 'Reading sources' },
+    { p: 70, l: 'Cross-referencing claims' },
+    { p: 85, l: 'Drafting report' },
+    { p: 92, l: 'Finalizing content' },
   ];
 
   useEffect(() => {
     setProgress(0);
+    setFunFactIndex(Math.floor(Math.random() * funFacts.length));
+    
     const t = setInterval(() => {
       setProgress((p) => {
-        const cap = 92;
-        if (p >= cap) return cap;
-        return Math.min(cap, p + 1.2 + Math.random() * 0.8);
+        // Progressive realistic loading that never completes
+        if (p < 20) {
+          return p + 3 + Math.random() * 2; // Fast start (searching)
+        } else if (p < 45) {
+          return p + 2 + Math.random() * 1.5; // Reading sources
+        } else if (p < 70) {
+          return p + 1.5 + Math.random() * 1; // Processing facts
+        } else if (p < 85) {
+          return p + 0.8 + Math.random() * 0.7; // Generating report
+        } else if (p < 92) {
+          return p + 0.4 + Math.random() * 0.3; // Almost done, slow down
+        } else {
+          // After 92%, very slow progress that never reaches 100%
+          return Math.min(98, p + Math.random() * 0.2);
+        }
       });
-    }, 120);
+    }, 600); // Consistent 600ms interval
+    
     return () => clearInterval(t);
   }, [query]);
+
+  // Rotate fun facts every 4 seconds
+  useEffect(() => {
+    const factTimer = setInterval(() => {
+      setFunFactIndex((prev) => (prev + 1) % funFacts.length);
+    }, 4000);
+    return () => clearInterval(factTimer);
+  }, []); // funFacts is now a constant outside component, so no dependency needed
 
   const displayProgress = Math.min(99, Math.round(progress));
 
@@ -133,18 +169,37 @@ function ResearchGeneratingPanel({ query }) {
           })}
         </div>
 
-        <p
-          className="mono"
+        <div
           style={{
             marginTop: 22,
-            fontSize: 11,
-            color: 'var(--mut2)',
-            letterSpacing: '.04em',
             textAlign: 'center',
+            minHeight: 32,
           }}
         >
-          Drafting the report takes some time, please be patient.
-        </p>
+          <p
+            className="mono"
+            style={{
+              fontSize: 11,
+              color: 'var(--mut2)',
+              letterSpacing: '.04em',
+              opacity: 0.8,
+              transition: 'opacity 0.5s ease',
+            }}
+          >
+            {funFacts[funFactIndex]}
+          </p>
+          <p
+            className="mono"
+            style={{
+              fontSize: 10,
+              color: 'var(--mut)',
+              letterSpacing: '.04em',
+              marginTop: 8,
+            }}
+          >
+            Drafting the report takes some time, please be patient.
+          </p>
+        </div>
       </div>
       <style>{`@keyframes research-pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }`}</style>
     </div>

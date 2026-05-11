@@ -321,18 +321,6 @@ ${comparisonSummary.citation_strategy ? `**Citation Strategy:** ${comparisonSumm
     }
   };
 
-  const formatFollowUpQuery = (userQuery) => {
-    const article1Title = mainReport.metadata?.article1_title || 'Article 1';
-    const article2Title = mainReport.metadata?.article2_title || 'Article 2';
-
-    const contextPrefix = `I just compared two articles:
-- Article 1: ${article1Title}
-- Article 2: ${article2Title}
-
-My question about this comparison: `;
-
-    return contextPrefix + userQuery;
-  };
 
   const barData = graphData?.data;
   const barGrid =
@@ -617,7 +605,18 @@ My question about this comparison: `;
               position: 'relative',
             }}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{verdictBody}</ReactMarkdown>
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({href, children, ...props}) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                    {children}
+                  </a>
+                )
+              }}
+            >
+              {verdictBody}
+            </ReactMarkdown>
           </div>
           {comparisonSummary?.similarity_score != null && (
             <div style={{ marginTop: 16, maxWidth: 400 }}>
@@ -831,14 +830,32 @@ My question about this comparison: `;
               <>
                 {comparisonSummary?.student_recommendation ? (
                   <div style={{ marginBottom: comparisonSummary?.citation_strategy ? 16 : 0 }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({href, children, ...props}) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                            {children}
+                          </a>
+                        )
+                      }}
+                    >
                       {comparisonSummary.student_recommendation}
                     </ReactMarkdown>
                   </div>
                 ) : null}
                 {comparisonSummary?.citation_strategy ? (
                   <div>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({href, children, ...props}) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                            {children}
+                          </a>
+                        )
+                      }}
+                    >
                       {comparisonSummary.citation_strategy}
                     </ReactMarkdown>
                   </div>
@@ -909,7 +926,16 @@ My question about this comparison: `;
                   }}
                   className="comparison-md"
                 >
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({href, children, ...props}) => (
+                        <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                          {children}
+                        </a>
+                      )
+                    }}
+                  >
                     {section.content.join('\n')}
                   </ReactMarkdown>
                 </div>
@@ -918,172 +944,6 @@ My question about this comparison: `;
           </div>
         </div>
 
-        <FrameDivider label="Smart follow-ups" />
-        <div className="card" style={{ padding: 24, background: 'var(--card)' }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 12,
-              marginBottom: 20,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                const contextPrompt = mainReport.metadata?.context
-                  ? `Based on the context "${mainReport.metadata.context}", generate a sample essay introduction paragraph that incorporates both articles from this comparison.`
-                  : 'Generate a sample essay introduction paragraph that incorporates both articles from this comparison.';
-                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-              }}
-              className="btn btn-ghost"
-              style={{
-                position: 'relative',
-                overflow: 'hidden',
-                alignItems: 'flex-start',
-                textAlign: 'left',
-                padding: 14,
-                height: 'auto',
-                minHeight: 72,
-              }}
-            >
-              <div
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: 4,
-                  height: '100%',
-                  background: 'var(--hot)',
-                }}
-              />
-              <span
-                className="serif"
-                style={{ fontSize: 17, display: 'block', marginBottom: 4, color: 'var(--fg)', position: 'relative' }}
-              >
-                Essay help
-              </span>
-              <span className="mono" style={{ fontSize: 11, color: 'var(--mut)', position: 'relative' }}>
-                Sample intro weaving both sources
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const contextPrompt = mainReport.metadata?.context
-                  ? `Based on the context "${mainReport.metadata.context}" and this article comparison, generate 3 smart research questions that could guide further investigation.`
-                  : 'Based on this article comparison, generate 3 smart research questions that could guide further investigation.';
-                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-              }}
-              className="btn btn-ghost"
-              style={{
-                position: 'relative',
-                overflow: 'hidden',
-                alignItems: 'flex-start',
-                textAlign: 'left',
-                padding: 14,
-                height: 'auto',
-                minHeight: 72,
-              }}
-            >
-              <div
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: 4,
-                  height: '100%',
-                  background: 'var(--cyan)',
-                }}
-              />
-              <span
-                className="serif"
-                style={{ fontSize: 17, display: 'block', marginBottom: 4, color: 'var(--fg)', position: 'relative' }}
-              >
-                Research questions
-              </span>
-              <span className="mono" style={{ fontSize: 11, color: 'var(--mut)', position: 'relative' }}>
-                Three citation-grounded next steps
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const contextPrompt = mainReport.metadata?.context
-                  ? `Highlight and explain the matching concepts between both articles that are relevant to "${mainReport.metadata.context}".`
-                  : 'Highlight and explain the matching concepts and themes that appear in both articles.';
-                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-              }}
-              className="btn btn-ghost"
-              style={{
-                position: 'relative',
-                overflow: 'hidden',
-                alignItems: 'flex-start',
-                textAlign: 'left',
-                padding: 14,
-                height: 'auto',
-                minHeight: 72,
-              }}
-            >
-              <div
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: 4,
-                  height: '100%',
-                  background: 'var(--sun)',
-                }}
-              />
-              <span
-                className="serif"
-                style={{ fontSize: 17, display: 'block', marginBottom: 4, color: 'var(--fg)', position: 'relative' }}
-              >
-                Matching concepts
-              </span>
-              <span className="mono" style={{ fontSize: 11, color: 'var(--mut)', position: 'relative' }}>
-                Shared themes across papers
-              </span>
-            </button>
-          </div>
-          <div
-            className="mono"
-            style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--mut2)', marginBottom: 10 }}
-          >
-            ADDITIONAL ANALYSIS
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const contextPrompt = mainReport.metadata?.context
-                  ? `What are the practical implications of these article differences for "${mainReport.metadata.context}"?`
-                  : 'What are the practical implications of these differences?';
-                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-              }}
-              className="btn btn-ghost"
-              style={{ justifyContent: 'flex-start', textAlign: 'left', padding: 12 }}
-            >
-              Practical implications
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const contextPrompt = mainReport.metadata?.context
-                  ? `How should I cite both articles effectively for "${mainReport.metadata.context}"?`
-                  : 'How should I cite both articles effectively in my work?';
-                onFollowUp && onFollowUp(formatFollowUpQuery(contextPrompt));
-              }}
-              className="btn btn-ghost"
-              style={{ justifyContent: 'flex-start', textAlign: 'left', padding: 12 }}
-            >
-              Citation strategy (deeper)
-            </button>
-          </div>
-        </div>
       </div>
 
       {isLoading && (

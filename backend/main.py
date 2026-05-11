@@ -233,6 +233,11 @@ class ArticleComparisonRequest(BaseModel):
     folder_id: Optional[int] = None
 
 
+class BetaReviewRequest(BaseModel):
+    review: str = Field(..., max_length=2000)
+    rating: Optional[int] = Field(None, ge=1, le=5)  # Optional 1-5 star rating
+
+
 class CitationMetadataRequest(BaseModel):
     urls: List[str] = Field(..., min_length=1, max_length=20)
 
@@ -1284,14 +1289,22 @@ def _set_reports_quota_locked(user_id: str, db: Any) -> None:
         logger.warning("profiles reports_quota_locked update failed for %s: %s", user_id, e)
 
 
-def _evaluate_reports_quota(uid: str, db: Any) -> tuple[bool, int]:
-    """Returns ``(quota_locked, lifetime_completed_threads)``. Persists lock when non-admin hits cap."""
+def _evaluate_reports_quota(uid: str, db: Any) -> tuple[bool, int, bool]:
+    """Returns ``(quota_locked, lifetime_completed_threads, just_reached_limit)``. Persists lock when non-admin hits cap."""
     lifetime = _lifetime_completed_report_threads(uid, db)
-    locked = _get_reports_quota_locked(uid, db)
+    was_locked = _get_reports_quota_locked(uid, db)
+    just_reached_limit = False
+    
     if not _user_is_admin(uid, db) and lifetime >= MONTHLY_REPORT_LIMIT:
+        if not was_locked:
+            # User just reached the limit for the first time
+            just_reached_limit = True
         _set_reports_quota_locked(uid, db)
         locked = True
-    return locked, lifetime
+    else:
+        locked = was_locked
+    
+    return locked, lifetime, just_reached_limit
 
 
 def _insert_usage_event(user_id: Optional[str], event_type: str, metadata: Dict) -> None:
@@ -1677,7 +1690,7 @@ async def get_usage(authorization: Annotated[Optional[str], Header()] = None):
                 "reports_quota_locked": quota_locked_flag,
                 "sources_cited_total": sources_cited_total,
             }
-        quota_locked, reports_used = _evaluate_reports_quota(uid, db)
+        quota_locked, reports_used, _ = _evaluate_reports_quota(uid, db)
         remaining = (
             0
             if quota_locked
@@ -1740,27 +1753,30 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
         uid = _auth_uid(user)
-        quota_locked, lifetime_reports = _evaluate_reports_quota(uid, db)
-        if quota_locked:
-            from datetime import date
+        
+        # Only check quota for NEW conversations, allow follow-ups on existing conversations
+        if body.conversation_id is None:  # New conversation
+            quota_locked, lifetime_reports, _ = _evaluate_reports_quota(uid, db)
+            if quota_locked:
+                from datetime import date
 
-            if lifetime_reports >= MONTHLY_REPORT_LIMIT:
-                _insert_usage_event(
-                    uid,
-                    "limit_reached",
-                    {
-                        "reports_used": lifetime_reports,
-                        "day_of_month": date.today().day,
-                        "reports_quota_locked": True,
-                    },
+                if lifetime_reports >= MONTHLY_REPORT_LIMIT:
+                    _insert_usage_event(
+                        uid,
+                        "limit_reached",
+                        {
+                            "reports_used": lifetime_reports,
+                            "day_of_month": date.today().day,
+                            "reports_quota_locked": True,
+                        },
+                    )
+                raise HTTPException(
+                    status_code=429,
+                    detail=(
+                        "You've reached the 5 report limit for our beta. "
+                        "Deleting saved research does not restore new runs."
+                    ),
                 )
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    "You've reached the 5 report limit for our beta. "
-                    "Deleting saved research does not restore new runs."
-                ),
-            )
 
         convo_id = body.conversation_id
         history = []
@@ -1791,30 +1807,52 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
 
         # Track assignment brief detection (500+ words likely indicates assignment paste)
         word_count = len(body.prompt.split())
-        if word_count >= 500 and not body.force_process:
-            _insert_usage_event(
-                uid,
-                "assignment_brief_detected",
-                {
-                    "word_count": word_count,
-                    "endpoint": "research"
+        assignment_threshold = 500  # Configurable threshold for assignment detection
+        logger.info("Processing request with %d words (threshold: %d), force_process=%s", 
+                   word_count, assignment_threshold, body.force_process)
+        if word_count >= assignment_threshold and not body.force_process:
+            try:
+                _insert_usage_event(
+                    uid,
+                    "assignment_brief_detected",
+                    {
+                        "word_count": word_count,
+                        "endpoint": "research"
+                    }
+                )
+                
+                # Return helpful guidance instead of processing the assignment directly
+                logger.info("Assignment brief detected (%d words), providing guidance", word_count)
+                
+                # Extract research questions with fallback
+                try:
+                    suggested_questions = await extract_research_questions(body.prompt)
+                except Exception as e:
+                    logger.error("Failed to extract research questions: %s", e)
+                    suggested_questions = [
+                        "What are the main factors contributing to this topic?",
+                        "What does current research say about this issue?",
+                        "What are the practical implications and recommendations?"
+                    ]
+                
+                # Ensure we have at least some questions
+                if not suggested_questions:
+                    suggested_questions = [
+                        "What are the main factors contributing to this topic?",
+                        "What does current research say about this issue?",
+                        "What are the practical implications and recommendations?"
+                    ]
+                
+                guidance_message = {
+                    "message": "This looks like an assignment brief! DeepResearch works best with focused research questions rather than full assignment instructions.",
+                    "explanation": "To get the most helpful results, try asking specific questions about parts of your assignment. This approach will give you more targeted research that you can use to build your complete response.",
+                    "suggested_questions": suggested_questions,
+                    "can_proceed": True,
+                    "note": "You can still search with your original text if you prefer, but focused questions usually work better."
                 }
-            )
-            
-            # Return helpful guidance instead of processing the assignment directly
-            logger.info("Assignment brief detected (%d words), providing guidance", word_count)
-            suggested_questions = await extract_research_questions(body.prompt)
-            
-            guidance_message = {
-                "message": "This looks like an assignment brief! DeepResearch works best with focused research questions rather than full assignment instructions.",
-                "explanation": "To get the most helpful results, try asking specific questions about parts of your assignment. This approach will give you more targeted research that you can use to build your complete response.",
-                "suggested_questions": suggested_questions,
-                "can_proceed": True,
-                "note": "You can still search with your original text if you prefer, but focused questions usually work better."
-            }
-            
-            # Save the guidance as an assistant message
-            guidance_content = f"""**Assignment Brief Detected**
+                
+                # Save the guidance as an assistant message
+                guidance_content = f"""**Assignment Brief Detected**
 
 {guidance_message['message']} {guidance_message['explanation']}
 
@@ -1826,25 +1864,34 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
 
 *If you'd like to proceed with your original text anyway, just send it again and I'll research it as-is.*"""
 
-            guidance_metadata = {
-                "assignment_guidance": True,
-                "suggested_questions": suggested_questions,
-                "original_word_count": word_count
-            }
-            
-            message_to_save = {
-                "conversation_id": convo_id,
-                "role": "assistant", 
-                "model_name": "DeepResearch Guidance",
-                "content": guidance_content,
-                "metadata": guidance_metadata,
-            }
-            message_res = db.table("messages").insert(message_to_save).execute()
-            
-            return {"conversation_id": convo_id, "new_messages": message_res.data}
+                guidance_metadata = {
+                    "assignment_guidance": True,
+                    "suggested_questions": suggested_questions,
+                    "original_word_count": word_count
+                }
+                
+                message_to_save = {
+                    "conversation_id": convo_id,
+                    "role": "assistant", 
+                    "model_name": "DeepResearch Guidance",
+                    "content": guidance_content,
+                    "metadata": guidance_metadata,
+                }
+                
+                try:
+                    message_res = db.table("messages").insert(message_to_save).execute()
+                    logger.info("Successfully saved assignment brief guidance message")
+                    return {"conversation_id": convo_id, "new_messages": message_res.data}
+                except Exception as e:
+                    logger.error("Failed to save assignment brief guidance message: %s", e)
+                    # Fall through to normal processing if we can't save the guidance message
+                    
+            except Exception as e:
+                logger.error("Assignment brief detection failed: %s", e)
+                # Fall through to normal processing if detection fails
 
         # Track forced processing of assignment briefs
-        if word_count >= 500 and body.force_process:
+        if word_count >= assignment_threshold and body.force_process:
             _insert_usage_event(
                 uid,
                 "assignment_brief_forced",
@@ -1914,7 +1961,7 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
         }
         message_res = db.table("messages").insert(message_to_save).execute()
 
-        _evaluate_reports_quota(uid, db)
+        locked, lifetime, just_reached = _evaluate_reports_quota(uid, db)
 
         response_time_ms = (time.time() - start) * 1000
         _insert_usage_event(
@@ -1931,13 +1978,80 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
             },
         )
 
-        return {"conversation_id": convo_id, "new_messages": message_res.data}
+        # Return info about reaching the limit for frontend to show popup
+        return {
+            "conversation_id": convo_id, 
+            "new_messages": message_res.data,
+            "quota_just_reached": just_reached
+        }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Error in run_research: %s", e)
         raise HTTPException(status_code=500, detail="Failed to run research")
+
+
+# =============================================================================
+# BETA REVIEW ENDPOINT
+# =============================================================================
+@app.post("/beta-review")
+@limiter.limit("5/hour")
+async def submit_beta_review(request: Request, body: BetaReviewRequest, authorization: Annotated[Optional[str], Header()] = None):
+    """Submit a beta review from users who have reached the quota limit."""
+    try:
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
+        
+        uid = _auth_uid(user)
+        
+        # Verify user has reached quota limit
+        quota_locked, lifetime_reports, _ = _evaluate_reports_quota(uid, db)
+        if not quota_locked:
+            raise HTTPException(status_code=400, detail="Beta review only available for users who have reached the report limit.")
+        
+        # Check if user has already submitted a review
+        existing_review = db.table("beta_reviews").select("id").eq("user_id", uid).execute()
+        if existing_review.data:
+            raise HTTPException(status_code=400, detail="You have already submitted a beta review.")
+        
+        # Get user's first name from profiles table
+        profile_result = db.table("profiles").select("first_name").eq("id", uid).execute()
+        first_name = None
+        if profile_result.data and len(profile_result.data) > 0:
+            first_name = profile_result.data[0].get("first_name")
+
+        # Insert the review
+        review_data = {
+            "user_id": uid,
+            "review": body.review,
+            "rating": body.rating,
+            "lifetime_reports": lifetime_reports,
+            "first_name": first_name
+        }
+        
+        result = db.table("beta_reviews").insert(review_data).execute()
+        
+        # Track the review submission
+        _insert_usage_event(
+            uid,
+            "beta_review_submitted",
+            {
+                "review_length": len(body.review),
+                "rating": body.rating,
+                "lifetime_reports": lifetime_reports,
+            }
+        )
+        
+        return {"message": "Thank you for your feedback! Your review has been submitted successfully."}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error in submit_beta_review: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to submit review")
 
 
 # =============================================================================

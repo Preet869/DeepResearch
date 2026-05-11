@@ -729,7 +729,16 @@ const EnhancedResearchDisplay = ({ messages, isLoading, onFollowUp, onExportPDF,
                         </div>
                         <div className="px-6 py-6">
                           <div className="prose prose-lg max-w-none text-gray-700 leading-relaxed">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <ReactMarkdown 
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a: ({href, children, ...props}) => (
+                                  <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                                    {children}
+                                  </a>
+                                )
+                              }}
+                            >
                               {section.content.join('\n')}
                             </ReactMarkdown>
                           </div>

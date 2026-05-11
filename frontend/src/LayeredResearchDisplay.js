@@ -19,7 +19,7 @@ const LayeredResearchDisplay = ({
 }) => {
   const [copiedSection, setCopiedSection] = useState(null);
   const [currentFollowUpQuery, setCurrentFollowUpQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('summary');
+  const [activeTab, setActiveTab] = useState('full');
   const [showCitationHelper, setShowCitationHelper] = useState(false);
 
   // Clear the current follow-up query when loading finishes
@@ -226,6 +226,7 @@ const LayeredResearchDisplay = ({
 
   return (
     <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-2">
+
       {/* Tabs Header */}
       <div
         className="rounded-t-xl shadow-sm border-b"
@@ -366,7 +367,16 @@ const LayeredResearchDisplay = ({
                     </button>
                   </div>
                   <div className="leading-relaxed" style={{ color: 'var(--fg)' }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({href, children, ...props}) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                            {children}
+                          </a>
+                        )
+                      }}
+                    >
                       {section.content.join('\n')}
                     </ReactMarkdown>
                   </div>
@@ -386,6 +396,7 @@ const LayeredResearchDisplay = ({
                 {chartFigWrapper(<ChartDisplay graphData={mainReport.metadata.graph_data} />)}
               </section>
             )}
+
           </div>
         )}
 

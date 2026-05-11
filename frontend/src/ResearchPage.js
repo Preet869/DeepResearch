@@ -145,13 +145,13 @@ function ResearchGuidance() {
       </div>
       
       <p 
-        className="text-xs"
+        className="text-sm font-medium"
         style={{ 
-          color: 'var(--mut2)', 
-          lineHeight: 1.4 
+          color: 'var(--mut)', 
+          lineHeight: 1.5 
         }}
       >
-        <span className="marker-half">DeepResearch</span> finds sources and synthesizes research — <span className="marker-half">you write the essay</span>.
+        <strong className="marker-half" style={{ fontWeight: 600 }}>DeepResearch</strong> finds sources and synthesizes research — <strong className="marker-half" style={{ fontWeight: 600 }}>you write the essay</strong>.
       </p>
     </div>
   );
@@ -712,6 +712,13 @@ const ResearchPage = () => {
         if (data.new_messages && data.new_messages.length > 0) {
           // Check if the response contains assignment brief guidance
           const lastMessage = data.new_messages[data.new_messages.length - 1];
+          console.log('Research response received:', { 
+            messageCount: data.new_messages.length, 
+            hasMetadata: !!lastMessage?.metadata,
+            hasAssignmentGuidance: !!lastMessage?.metadata?.assignment_guidance,
+            forceProcess: forceProcess,
+            wordCount: queryText.split(' ').length
+          });
           if (lastMessage?.metadata?.assignment_guidance && !forceProcess) {
             // Show assignment brief modal instead of displaying the message
             setOriginalAssignmentQuery(queryText);
@@ -734,6 +741,11 @@ const ResearchPage = () => {
           } else {
             // Normal flow - add messages to conversation
             setMessages(prev => [...prev, ...data.new_messages]);
+            
+            // Check if user just reached quota limit - store in localStorage for dashboard
+            if (data.quota_just_reached) {
+              localStorage.setItem('deepresearch_show_beta_review', 'true');
+            }
             
             // Track successful research response
             analyticsService.trackSearchResults(
@@ -889,7 +901,7 @@ const ResearchPage = () => {
 
   const handleFollowUpSlotClick = (slot) => {
     const userMessages = messages.filter(m => m.role === 'user');
-    if (researchCreationBlocked && userMessages.length <= slot) return;
+    // Allow follow-ups on existing conversations even when quota is exhausted
     if (userMessages.length > slot) {
       // If slot has content, navigate to it
       handleNodeSelect(slot);
@@ -901,29 +913,11 @@ const ResearchPage = () => {
     }
   };
 
-  const generateSuggestedPrompts = () => {
-    if (messages.length === 0) return [];
-    
-    const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-    const originalQuery = lastUserMessage?.content || '';
-    
-    return [
-      `What are the potential risks and challenges with ${originalQuery.toLowerCase()}?`,
-      `How does this compare to alternative approaches?`,
-      `What are the economic implications of ${originalQuery.toLowerCase()}?`,
-      `What are the latest developments in this field?`,
-      `What are the ethical considerations involved?`,
-      `How might this evolve in the next 5-10 years?`
-    ];
-  };
-
-  const handleSuggestedPromptSelect = (prompt) => {
-    setCustomFollowUpQuery(prompt);
-  };
 
   const handleFollowUpSubmit = (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    if (researchCreationBlocked || !customFollowUpQuery.trim() || loading) return;
+    // Follow-ups are always allowed on existing reports, even when quota is exhausted
+    if (!customFollowUpQuery.trim() || loading) return;
 
     setExpandedFollowUpSlot(null);
     handleAddFollowup(customFollowUpQuery);
@@ -935,8 +929,10 @@ const ResearchPage = () => {
     setCustomFollowUpQuery('');
   };
 
+
   const handleSubmitFollowup = async (query, forceProcess = false) => {
-    if (researchCreationBlocked || !query.trim() || loading) return;
+    // Follow-ups are always allowed on existing reports, even when quota is exhausted
+    if (!query.trim() || loading) return;
 
     setLoading(true);
     const userMessage = { role: 'user', content: query.trim() };
@@ -971,6 +967,13 @@ const ResearchPage = () => {
         if (data.new_messages && data.new_messages.length > 0) {
           // Check if the response contains assignment brief guidance
           const lastMessage = data.new_messages[data.new_messages.length - 1];
+          console.log('Followup response received:', { 
+            messageCount: data.new_messages.length, 
+            hasMetadata: !!lastMessage?.metadata,
+            hasAssignmentGuidance: !!lastMessage?.metadata?.assignment_guidance,
+            forceProcess: forceProcess,
+            wordCount: query.split(' ').length
+          });
           if (lastMessage?.metadata?.assignment_guidance && !forceProcess) {
             // Show assignment brief modal instead of displaying the message
             setOriginalAssignmentQuery(query);
@@ -1013,7 +1016,7 @@ const ResearchPage = () => {
   };
 
   const handleFollowUp = (suggestion) => {
-    if (researchCreationBlocked) return;
+    // Follow-ups are always allowed on existing reports, even when quota is exhausted
     setInputValue(suggestion);
     handleSubmitFollowup(suggestion);
   };
@@ -1429,56 +1432,13 @@ const ResearchPage = () => {
                               </button>
                             </div>
 
-                            <div className="mb-8">
-                              <h3 className="mono text-xs mb-4" style={{ color: 'var(--mut2)', letterSpacing: '0.06em' }}>
-                                SUGGESTED PROMPTS
-                              </h3>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {generateSuggestedPrompts().map((prompt, index) => (
-                                  <button
-                                    key={index}
-                                    type="button"
-                                    disabled={researchCreationBlocked}
-                                    onClick={() => handleSuggestedPromptSelect(prompt)}
-                                    className="p-4 rounded-xl transition-colors text-left"
-                                    style={{
-                                      background: 'var(--paper)',
-                                      border: '1px solid var(--line)',
-                                      color: 'var(--fg)',
-                                      opacity: researchCreationBlocked ? 0.45 : 1,
-                                      cursor: researchCreationBlocked ? 'not-allowed' : 'pointer',
-                                    }}
-                                  >
-                                    <div className="flex items-start gap-3">
-                                      <svg
-                                        className="w-5 h-5 mt-0.5 flex-shrink-0"
-                                        style={{ color: 'var(--violet)' }}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                                        />
-                                      </svg>
-                                      <span className="text-sm leading-snug" style={{ color: 'var(--mut)' }}>
-                                        {prompt}
-                                      </span>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
 
                             <ResearchQueryComposer
                               value={customFollowUpQuery}
                               onChange={(e) => setCustomFollowUpQuery(e.target.value)}
                               onSubmit={handleFollowUpSubmit}
                               loading={loading}
-                              submitDisabled={researchCreationBlocked}
+                              submitDisabled={false}
                               placeholder="Enter your follow-up research question…"
                             />
                           </div>
@@ -1565,6 +1525,7 @@ const ResearchPage = () => {
         targetRef={inputContainerRef}
         onDismiss={handleTooltipDismiss}
       />
+
     </div>
   );
 };
