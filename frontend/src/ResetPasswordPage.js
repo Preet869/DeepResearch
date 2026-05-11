@@ -38,37 +38,61 @@ const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    // Check if we have the required tokens from the email link
-    const accessToken = searchParams.get('access_token');
-    const refreshToken = searchParams.get('refresh_token');
-    
-    if (!accessToken || !refreshToken) {
-      setError('Invalid or expired reset link. Please request a new password reset.');
-      setValidatingToken(false);
-      return;
-    }
-
-    // Set the session with the tokens from the URL
-    const setSession = async () => {
+    const validateResetLink = async () => {
       try {
-        const { error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken
-        });
+        // Check for different types of tokens from the email link
+        const accessToken = searchParams.get('access_token');
+        const refreshToken = searchParams.get('refresh_token');
+        const token = searchParams.get('token');
+        const type = searchParams.get('type');
         
-        if (error) {
-          setError('Invalid or expired reset link. Please request a new password reset.');
-        } else {
-          setMessage('Ready to set your new password.');
+        console.log('URL params:', { accessToken: !!accessToken, refreshToken: !!refreshToken, token: !!token, type });
+        
+        // Method 1: Direct session tokens (newer Supabase format)
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          
+          if (error) {
+            console.error('Session error:', error);
+            setError('Invalid or expired reset link. Please request a new password reset.');
+          } else {
+            setMessage('Ready to set your new password.');
+          }
+          setValidatingToken(false);
+          return;
         }
+        
+        // Method 2: Recovery token (email confirmation URL format)
+        if (type === 'recovery' && token) {
+          // For recovery type, we'll validate the token when the user submits the form
+          setMessage('Ready to set your new password.');
+          setValidatingToken(false);
+          return;
+        }
+        
+        // Method 3: Check if user is already authenticated (edge case)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setMessage('Ready to set your new password.');
+          setValidatingToken(false);
+          return;
+        }
+        
+        // No valid reset method found
+        setError('Invalid or expired reset link. Please request a new password reset.');
+        setValidatingToken(false);
+        
       } catch (err) {
+        console.error('Reset link validation error:', err);
         setError('Error validating reset link. Please try again.');
-      } finally {
         setValidatingToken(false);
       }
     };
 
-    setSession();
+    validateResetLink();
   }, [searchParams]);
 
   const handleSubmit = async (e) => {
@@ -97,11 +121,39 @@ const ResetPasswordPage = () => {
     }
 
     try {
+      const token = searchParams.get('token');
+      const type = searchParams.get('type');
+      const accessToken = searchParams.get('access_token');
+      
+      // Method 1: If we have a recovery token, verify it first
+      if (type === 'recovery' && token) {
+        console.log('Using recovery token method');
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          token_hash: token,
+          type: 'recovery'
+        });
+        
+        if (verifyError) {
+          console.error('Recovery token verification failed:', verifyError);
+          throw new Error('Invalid or expired reset link. Please request a new password reset.');
+        }
+      }
+      
+      // Method 2: Check if we already have a valid session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session && !accessToken) {
+        throw new Error('No valid session found. Please use the reset link from your email.');
+      }
+      
+      console.log('Updating password...');
       const { error } = await supabase.auth.updateUser({
         password: password.trim()
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Password update error:', error);
+        throw error;
+      }
       
       setMessage('Password updated successfully! Redirecting to sign in...');
       
@@ -114,7 +166,8 @@ const ResetPasswordPage = () => {
       }, 2000);
       
     } catch (error) {
-      setError(error.message);
+      console.error('Full password reset error:', error);
+      setError(error.message || 'An error occurred while updating your password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -240,6 +293,20 @@ const ResetPasswordPage = () => {
             <h3 className="serif" style={{ fontSize: 45, lineHeight: 1.1, margin: 0, letterSpacing: '-.015em' }}>
               Create your <span style={{ fontStyle: 'italic' }}>new password</span>.
             </h3>
+
+            {/* Debug info (temporary - remove in production) */}
+            {process.env.NODE_ENV === 'development' && (
+              <div style={{ 
+                marginTop: 20, padding: '12px 16px', borderRadius: 8,
+                background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)',
+                color: '#1d4ed8', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace'
+              }}>
+                <strong>Debug URL params:</strong><br/>
+                {Array.from(searchParams.entries()).map(([key, value]) => (
+                  <div key={key}>{key}: {value ? 'present' : 'missing'}</div>
+                ))}
+              </div>
+            )}
 
             {/* Error Messages */}
             {error && (

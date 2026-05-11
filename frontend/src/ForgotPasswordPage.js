@@ -47,8 +47,13 @@ const ForgotPasswordPage = () => {
     }
 
     try {
+      // Use production URL for consistency
+      const baseUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://deepresearchbeta.vercel.app'
+        : window.location.origin;
+        
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${baseUrl}/reset-password`,
       });
       
       if (error) throw error;

@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient';
 
 class AnalyticsService {
   constructor() {
-    this.isEnabled = true;
+    this.isEnabled = false; // Temporarily disable analytics
     this.sessionStartTime = Date.now();
     this.currentPageStartTime = Date.now();
     this.currentPage = null;
@@ -10,6 +10,7 @@ class AnalyticsService {
     this.batchTimer = null;
     this.BATCH_DELAY = 2000; // Send events every 2 seconds
     this.MAX_BATCH_SIZE = 10; // Max events per batch
+    this.rlsErrorLogged = false; // Track if we've already logged RLS error
     
     // Initialize session tracking
     this.initSession();
@@ -119,9 +120,17 @@ class AnalyticsService {
           .insert(events);
         
         if (error) {
-          console.error('Analytics batch insert failed:', error);
-          // Re-queue events if not forced flush
-          if (!force) {
+          // Only log RLS errors once to avoid spam
+          if (error.code === '42501' && !this.rlsErrorLogged) {
+            console.warn('Analytics disabled: Row Level Security policy blocks usage_events insertion');
+            this.rlsErrorLogged = true;
+            this.isEnabled = false; // Auto-disable on RLS errors
+          } else if (error.code !== '42501') {
+            console.error('Analytics batch insert failed:', error);
+          }
+          
+          // Don't re-queue on RLS errors
+          if (!force && error.code !== '42501') {
             this.batchQueue.unshift(...events);
           }
         }

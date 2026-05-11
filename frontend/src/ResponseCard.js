@@ -297,7 +297,16 @@ const ResponseCard = ({ message }) => {
             </div>
             
             <div className="prose prose-lg max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: ({href, children, ...props}) => (
+                    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                      {children}
+                    </a>
+                  )
+                }}
+              >
                 {section.content.join('\n')}
               </ReactMarkdown>
             </div>

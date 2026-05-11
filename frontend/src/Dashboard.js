@@ -9,6 +9,8 @@ import analyticsService from './services/analyticsService';
 import { exportResearchToPDF } from './utils/exportResearchPdf';
 import { getUserFirstName } from './utils/userDisplayName';
 import { TipCard } from './components/TipCard';
+import BetaReviewModal from './components/BetaReviewModal';
+import { handleBetaReviewSubmit, shouldShowBetaReview, clearBetaReviewFlag } from './utils/betaReviewUtils';
 import {
   DndContext,
   DragOverlay,
@@ -64,7 +66,7 @@ const SideLink = ({ icon, label, onClick }) => {
   return (
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 10,
-      padding: '8px 10px', borderRadius: 8, border: 'none',
+      padding: '6px 8px', borderRadius: 6, border: 'none',
       background: 'transparent', color: 'var(--mut)', cursor: 'pointer',
       textAlign: 'left', fontSize: 13, fontFamily: 'Geist, sans-serif',
     }}>
@@ -78,13 +80,13 @@ const REPORT_ROW_ACCENT_TINTS = ['var(--violet)', 'var(--cyan)', 'var(--hot)', '
 
 const BigStat = ({ n, l, tint }) => {
   return (
-    <div className="card" style={{ padding: 18, position: 'relative', overflow: 'hidden' }}>
+    <div className="card" style={{ padding: 14, position: 'relative', overflow: 'hidden' }}>
       <div style={{
-        position: 'absolute', top: 0, left: 0, width: 4, height: '100%',
+        position: 'absolute', top: 0, left: 0, width: 3, height: '100%',
         background: tint,
       }}/>
-      <div className="serif" style={{ fontSize: 44, lineHeight: 1, letterSpacing: '-.025em' }}>{n}</div>
-      <div className="mono" style={{ marginTop: 4, fontSize: 10, color: 'var(--mut)', letterSpacing: '.1em', textTransform: 'uppercase' }}>{l}</div>
+      <div className="serif" style={{ fontSize: 32, lineHeight: 1, letterSpacing: '-.025em' }}>{n}</div>
+      <div className="mono" style={{ marginTop: 3, fontSize: 9, color: 'var(--mut)', letterSpacing: '.1em', textTransform: 'uppercase' }}>{l}</div>
     </div>
   );
 };
@@ -248,12 +250,12 @@ const DraggableReportRow = ({ r, folders, onOpen, onDelete, accentTint }) => {
         role="presentation"
         onClick={handleCardClick}
         style={{
-          padding: '16px 18px',
+          padding: '12px 14px',
           textAlign: 'left',
           cursor: 'pointer',
           display: 'grid',
-          gridTemplateColumns: '24px 24px 1fr auto auto',
-          gap: 12,
+          gridTemplateColumns: '20px 20px 1fr auto auto',
+          gap: 10,
           alignItems: 'center',
           width: '100%',
         }}
@@ -277,7 +279,7 @@ const DraggableReportRow = ({ r, folders, onOpen, onDelete, accentTint }) => {
             borderRadius: 4,
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
             <circle cx="9" cy="7" r="1.25" />
             <circle cx="9" cy="12" r="1.25" />
             <circle cx="9" cy="17" r="1.25" />
@@ -288,8 +290,8 @@ const DraggableReportRow = ({ r, folders, onOpen, onDelete, accentTint }) => {
         </button>
         <div
           style={{
-            width: 22,
-            height: 28,
+            width: 18,
+            height: 24,
             borderRadius: 3,
             background: folder.color,
             opacity: 0.9,
@@ -297,7 +299,7 @@ const DraggableReportRow = ({ r, folders, onOpen, onDelete, accentTint }) => {
           }}
         />
         <div>
-          <div className="serif" style={{ fontSize: 21, lineHeight: 1.2, letterSpacing: '-.01em' }}>
+          <div className="serif" style={{ fontSize: 18, lineHeight: 1.2, letterSpacing: '-.01em' }}>
             {r.title}
           </div>
           <div className="mono" style={{ marginTop: 4, fontSize: 11, color: 'var(--mut2)', letterSpacing: '.04em' }}>
@@ -391,6 +393,8 @@ const Dashboard = () => {
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportSelectedId, setExportSelectedId] = useState(null);
   const [exportBusy, setExportBusy] = useState(false);
+  const [showBetaReviewModal, setShowBetaReviewModal] = useState(false);
+  const [showQuotaLimitModal, setShowQuotaLimitModal] = useState(false);
 
   const { token, user, syncUsageQuotaFromApi, researchCreationBlocked, usageQuota } = useAuth();
   const navigate = useNavigate();
@@ -630,6 +634,30 @@ const Dashboard = () => {
       cancelled = true;
     };
   }, [user?.id, loading, allConversations.length, syncUsageQuotaFromApi]);
+
+  // Check if we should show the beta review modal when component loads
+  useEffect(() => {
+    if (shouldShowBetaReview()) {
+      setShowBetaReviewModal(true);
+    }
+  }, []);
+
+  // Development keyboard shortcut to test beta review modal
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    
+    const handleKeyPress = (event) => {
+      // Ctrl/Cmd + Shift + B = open Beta review modal
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'B') {
+        event.preventDefault();
+        setShowBetaReviewModal(true);
+        console.log('🧪 Test: Beta Review Modal opened via keyboard shortcut');
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
@@ -936,7 +964,10 @@ const Dashboard = () => {
   };
 
   const startNewResearch = () => {
-    if (researchCreationBlocked) return;
+    if (researchCreationBlocked) {
+      setShowQuotaLimitModal(true);
+      return;
+    }
     const params = new URLSearchParams();
     if (selectedFolder) {
       params.set('folder_id', selectedFolder.id);
@@ -1029,14 +1060,14 @@ const Dashboard = () => {
         <div style={{
           flex: 1,
           display: 'grid',
-          gridTemplateColumns: '280px 1fr',
+          gridTemplateColumns: '240px 1fr',
           gridTemplateRows: '1fr',
           minHeight: 0,
         }}>
         {/* SIDEBAR */}
         <aside style={{
-          borderRight: '1px solid var(--line)', padding: '28px 18px',
-          display: 'flex', flexDirection: 'column', gap: 22,
+          borderRight: '1px solid var(--line)', padding: '22px 14px',
+          display: 'flex', flexDirection: 'column', gap: 18,
           height: '100%',
           minHeight: 0,
         }}>
@@ -1045,7 +1076,7 @@ const Dashboard = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <button style={{
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 10px', borderRadius: 8, border: 'none',
+                padding: '6px 8px', borderRadius: 6, border: 'none',
                 background: 'var(--card)', color: 'var(--fg)', cursor: 'default',
                 fontSize: 13, fontFamily: 'Geist, sans-serif'
               }}>
@@ -1058,7 +1089,7 @@ const Dashboard = () => {
               {[1, 2, 3].map((i) => (
                 <button key={i} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 10px', borderRadius: 8, border: 'none',
+                  padding: '6px 8px', borderRadius: 6, border: 'none',
                   background: 'transparent', color: 'var(--fg)', cursor: 'default',
                   fontSize: 13, fontFamily: 'Geist, sans-serif'
                 }}>
@@ -1078,7 +1109,7 @@ const Dashboard = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <button style={{
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 10px', borderRadius: 8, border: 'none',
+                padding: '6px 8px', borderRadius: 6, border: 'none',
                 background: 'transparent', color: 'var(--mut)', cursor: 'default',
                 textAlign: 'left', fontSize: 13, fontFamily: 'Geist, sans-serif',
               }}>
@@ -1092,9 +1123,9 @@ const Dashboard = () => {
         </aside>
 
         {/* MAIN */}
-        <main style={{ padding: '36px 44px', minHeight: 0, overflow: 'auto' }}>
+        <main style={{ padding: '24px 32px', minHeight: 0, overflow: 'auto' }}>
           {/* page heading */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 22 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18 }}>
             <div>
               <div style={{ width: 120, height: 10, background: 'var(--line)', borderRadius: 4, marginBottom: 8, animation: 'pulse 2s infinite' }}></div>
               <div style={{ width: 350, height: 48, background: 'var(--line)', borderRadius: 6, marginBottom: 12, animation: 'pulse 2s infinite 0.2s' }}></div>
@@ -1116,7 +1147,7 @@ const Dashboard = () => {
           </div>
 
           {/* big stats strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 22 }}>
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="card" style={{ padding: 18, position: 'relative', overflow: 'hidden' }}>
                 <div style={{
@@ -1141,8 +1172,8 @@ const Dashboard = () => {
               {/* Skeleton report cards */}
               {[1, 2, 3].map((i) => (
                 <div key={i} className="card" style={{
-                  padding: '16px 18px', display: 'grid', gridTemplateColumns: '24px 24px 1fr auto auto',
-                  gap: 12, alignItems: 'center', background: 'var(--card)', border: '1px solid var(--line)',
+                  padding: '12px 14px', display: 'grid', gridTemplateColumns: '20px 20px 1fr auto auto',
+                  gap: 10, alignItems: 'center', background: 'var(--card)', border: '1px solid var(--line)',
                 }}>
                   <div style={{ width: 12, height: 18, background: 'var(--line)', borderRadius: 4, opacity: 0.7 }}/>
                   <div style={{
@@ -1182,22 +1213,24 @@ const Dashboard = () => {
         <div style={{
           flex: 1,
           display: 'grid',
-          gridTemplateColumns: '280px 1fr',
+          gridTemplateColumns: '240px 1fr',
           gridTemplateRows: '1fr',
           minHeight: 0,
         }}>
         {/* SIDEBAR */}
         <aside style={{
-          borderRight: '1px solid var(--line)', padding: '28px 18px',
-          display: 'flex', flexDirection: 'column', gap: 22,
+          borderRight: '1px solid var(--line)', padding: '22px 14px',
+          display: 'flex', flexDirection: 'column', gap: 18,
           height: '100%',
           minHeight: 0,
         }}>
           <button 
             className="btn btn-new-research" 
-            style={{ justifyContent: 'center' }} 
+            style={{ 
+              justifyContent: 'center',
+              opacity: researchCreationBlocked ? 0.6 : 1
+            }} 
             onClick={startNewResearch}
-            disabled={researchCreationBlocked}
           >
             <Icon.Plus /> New research
           </button>
@@ -1211,7 +1244,7 @@ const Dashboard = () => {
                 onClick={() => selectFolder(null)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 10px', borderRadius: 8, border: 'none',
+                  padding: '6px 8px', borderRadius: 6, border: 'none',
                   background: selectedFolder === null ? 'var(--card)' : 'transparent',
                   color: 'var(--fg)', cursor: 'pointer', textAlign: 'left',
                   fontSize: 13, fontFamily: 'Geist, sans-serif',
@@ -1311,6 +1344,11 @@ const Dashboard = () => {
             <div className="mono" style={{ fontSize: 10, color: 'var(--mut2)', letterSpacing: '.18em', padding: '0 6px 8px' }}>QUICK</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <SideLink icon={<Icon.Download/>} label="Export" onClick={openExportModal} />
+              <SideLink 
+                icon={<span style={{color: 'var(--violet)'}}></span>} 
+                label="Give Feedback" 
+                onClick={() => setShowBetaReviewModal(true)} 
+              />
             </div>
           </div>
 
@@ -1318,13 +1356,13 @@ const Dashboard = () => {
         </aside>
 
         {/* MAIN */}
-        <main style={{ padding: '36px 44px', minHeight: 0, overflow: 'auto' }}>
+        <main style={{ padding: '24px 32px', minHeight: 0, overflow: 'auto' }}>
           {/* page heading */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 22 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18 }}>
             <div>
               <div className="mono" style={{ fontSize: 11, color: 'var(--mut2)', letterSpacing: '.18em' }}>YOUR LIBRARY</div>
               <h1 className="serif" style={{
-                fontSize: 'clamp(40px, 5vw, 64px)', lineHeight: 1, margin: '8px 0 0', letterSpacing: '-.02em',
+                fontSize: 'clamp(32px, 4vw, 48px)', lineHeight: 1, margin: '6px 0 0', letterSpacing: '-.02em',
               }}>
                 {getTimeOfDayGreeting()},{' '}
                 <span style={{ fontStyle: 'italic' }}>
@@ -1334,17 +1372,17 @@ const Dashboard = () => {
                 </span>
                 .
               </h1>
-              <p style={{ margin: '12px 0 0', color: 'var(--mut)', fontSize: 15, fontStyle: 'italic' }}>
+              <p style={{ margin: '8px 0 0', color: 'var(--mut)', fontSize: 13, fontStyle: 'italic' }}>
                 "{getResearcherQuote()}"
               </p>
               {(showQuotaCapSubtitle || showAdminUnlimitedSubtitle) && (
               <p style={{ margin: '8px 0 0', color: 'var(--mut)', fontSize: 14 }}>
                 {showQuotaCapSubtitle ? (
                   <>
-                    <b style={{ color: 'var(--fg)' }}>
+                    <span className="marker-half" style={{ color: 'var(--fg)' }}>
                       {quotaHeadingLimit} {reportsNoun(quotaHeadingLimit)}
-                    </b>{' '}
-                    deep — beta cap. Deletes won&apos;t refill.
+                    </span>{' '}
+                    deep — <span className="marker-half" style={{ color: 'var(--fg)' }}>beta cap</span>. <span className="marker-half" style={{ color: 'var(--fg)' }}>Deletes</span> won&apos;t refill.
                   </>
                 ) : (
                   <>No monthly report cap on your account.</>
@@ -1394,7 +1432,7 @@ const Dashboard = () => {
           </div>
 
           {/* big stats strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 22 }}>
             <BigStat n={allConversations.length.toString()} l="Total reports" tint="var(--violet)" />
             <BigStat n={String(usage.sources_cited_total ?? 0)} l="Sources cited" tint="var(--cyan)"/>
             <BigStat n={allConversations.filter(conv => {
@@ -1439,11 +1477,10 @@ const Dashboard = () => {
                     type="button"
                     className="btn btn-new-research"
                     onClick={startNewResearch}
-                    disabled={researchCreationBlocked}
                     style={{
                       marginTop: 20,
                       borderRadius: 9999,
-                      opacity: researchCreationBlocked ? 0.45 : 1,
+                      opacity: researchCreationBlocked ? 0.6 : 1,
                     }}
                   >
                     <Icon.Plus /> New research
@@ -1816,7 +1853,7 @@ const Dashboard = () => {
           <div
             className="card"
             style={{
-              padding: '16px 18px',
+              padding: '12px 14px',
               opacity: 0.92,
               boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
               display: 'grid',
@@ -1836,12 +1873,99 @@ const Dashboard = () => {
                 boxShadow: `0 6px 14px -8px ${draggedFolderMeta.color}`,
               }}
             />
-            <span className="serif" style={{ fontWeight: 500, fontSize: 19, color: 'var(--fg)', lineHeight: 1.2 }}>
+            <span className="serif" style={{ fontWeight: 500, fontSize: 16, color: 'var(--fg)', lineHeight: 1.2 }}>
               {draggedConversation?.title || 'Research report'}
             </span>
           </div>
         ) : null}
       </DragOverlay>
+
+      {/* Beta Review Modal */}
+      <BetaReviewModal
+        isOpen={showBetaReviewModal}
+        onClose={() => {
+          setShowBetaReviewModal(false);
+          clearBetaReviewFlag();
+        }}
+        onSubmit={async (reviewData) => {
+          await handleBetaReviewSubmit(reviewData);
+          setShowBetaReviewModal(false);
+        }}
+      />
+
+      {/* Quota Limit Modal */}
+      {showQuotaLimitModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div 
+            className="card" 
+            style={{ 
+              padding: '32px 36px', 
+              width: '100%', 
+              maxWidth: '480px', 
+              margin: '0 1rem',
+              textAlign: 'center'
+            }}
+          >
+            {/* Header */}
+            <div className="mono" style={{ fontSize: 10, color: 'var(--mut2)', letterSpacing: '.18em', marginBottom: 20 }}>
+              BETA LIMIT REACHED
+            </div>
+            
+            <h3 
+              className="serif" 
+              style={{ 
+                fontSize: 'clamp(24px, 3vw, 32px)',
+                fontWeight: 400, 
+                color: 'var(--fg)', 
+                marginBottom: 16, 
+                lineHeight: 1.2,
+                letterSpacing: '-.015em'
+              }}
+            >
+              Thank you for using Deep<span style={{ fontStyle: 'italic', color: 'var(--sun)' }}>Research!</span>
+            </h3>
+            
+            <p style={{ 
+              color: 'var(--mut)', 
+              marginBottom: 28, 
+              fontSize: 15, 
+              lineHeight: 1.55,
+              fontFamily: 'Geist, sans-serif'
+            }}>
+              You've reached your <span className="marker-half" style={{ color: 'var(--fg)' }}>beta limit</span> of {usage.reports_limit || 5} reports. 
+              We'll see you in the next trial! You can still explore your existing reports and use follow-up questions.
+            </p>
+
+            <button
+              onClick={() => setShowQuotaLimitModal(false)}
+              className="btn"
+              style={{
+                background: 'var(--violet)',
+                color: 'white',
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: 8,
+                fontFamily: 'Geist, sans-serif',
+                fontWeight: 600,
+                fontSize: 15,
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(124, 92, 255, 0.3)',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = '0 8px 24px rgba(124, 92, 255, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 16px rgba(124, 92, 255, 0.3)';
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </DndContext>
   );
 };
