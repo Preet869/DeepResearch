@@ -262,7 +262,7 @@ function Welcome() {
 
 Background research organized for you.
 
-Understand your topic. Then write your essay."
+Understand your topic deeply. Then take it from there."
               chip="Research foundation" />
             
             <Pillar
