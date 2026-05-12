@@ -17,6 +17,8 @@ function Welcome() {
   const go = (route) => {
     if (route === 'auth') {
       navigate('/login');
+    } else if (route === '') {
+      navigate('/');
     } else {
       navigate(`/${route}`);
     }

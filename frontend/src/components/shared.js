@@ -106,7 +106,7 @@ function TopNav({ route, go, authed }) {
       background: 'color-mix(in srgb, var(--bg) 88%, transparent)',
       backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)'
     }}>
-      <div onClick={() => go(authed ? 'dashboard' : 'welcome')} style={{ cursor: 'pointer' }}>
+      <div onClick={() => go(authed ? 'dashboard' : '')} style={{ cursor: 'pointer' }}>
         <Wordmark />
       </div>
 

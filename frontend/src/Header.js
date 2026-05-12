@@ -156,7 +156,7 @@ function Header() {
       }}
     >
       <Link
-        to="/dashboard"
+        to="/"
         style={{
           textDecoration: 'none',
           color: 'inherit',
