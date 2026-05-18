@@ -792,21 +792,26 @@ async def summarize_conversation(history: List[Dict[str, str]]) -> str:
 # =============================================================================
 # ARTICLE EXTRACTION
 # =============================================================================
-async def extract_article_content(url: str) -> Dict[str, str]:
+async def extract_article_content(url: str) -> Dict[str, Any]:
     """Extracts article content from a URL using Tavily extract, with search fallback."""
     if not tavily_client:
         logger.warning("Article extraction skipped for %s: Tavily not configured", url)
-        return {"title": "", "content": "", "url": url}
+        return {"title": "", "content": "", "url": url, "extraction_failed": True, "extraction_length": 0}
     try:
         response = tavily_client.extract(urls=[url])
         if response and response.get("results"):
             result = response["results"][0]
+            content = result.get("raw_content", result.get("content", ""))[:6000]
+            title = result.get("title", "") or "Unknown Article"
+            extraction_failed = len(content.strip()) < 200
+            if extraction_failed:
+                logger.warning("Article extraction yielded minimal content for %s: %d chars", url, len(content))
             return {
-                "title": result.get("title", ""),
-                "content": (
-                    result.get("raw_content", result.get("content", ""))[:6000]
-                ),
+                "title": title,
+                "content": content,
                 "url": url,
+                "extraction_failed": extraction_failed,
+                "extraction_length": len(content),
             }
     except Exception:
         pass
@@ -819,15 +824,22 @@ async def extract_article_content(url: str) -> Dict[str, str]:
         )
         if response["results"]:
             result = response["results"][0]
+            content = result.get("content", "")[:6000]
+            title = result.get("title", "") or "Unknown Article"
+            extraction_failed = len(content.strip()) < 200
+            if extraction_failed:
+                logger.warning("Article extraction yielded minimal content for %s: %d chars", url, len(content))
             return {
-                "title": result.get("title", ""),
-                "content": result.get("content", "")[:6000],
+                "title": title,
+                "content": content,
                 "url": result.get("url", url),
+                "extraction_failed": extraction_failed,
+                "extraction_length": len(content),
             }
     except Exception as e:
         logger.error("Article extraction failed for %s: %s", url, e)
 
-    return {"title": "", "content": "", "url": url}
+    return {"title": "", "content": "", "url": url, "extraction_failed": True, "extraction_length": 0}
 
 
 # =============================================================================
@@ -1081,73 +1093,234 @@ async def _fetch_citation_metadata_for_url(client: httpx.AsyncClient, url: str) 
 # =============================================================================
 # ARTICLE COMPARISON REPORT
 # =============================================================================
+ARTICLE_COMPARISON_PROMPT = """You are analyzing two academic articles for a student writing a literature review or comparative essay.
+
+YOUR JOB: Help them synthesize these sources into their paper, NOT evaluate source credibility.
+
+# ANALYSIS FRAMEWORK
+
+## 1. QUICK OVERVIEW (Top of report)
+- **Main topic/question both articles address**
+- **Key agreement**: What do both sources say?
+- **Key disagreement**: Where do they conflict and WHY?
+- **Strongest evidence**: Which article has better support for its claims?
+- **Best use**: When to cite Article A vs Article B in their paper
+
+## 2. THEMATIC COMPARISON (Core of report)
+Organize by THEMES, not by source. For each major theme:
+
+### Theme: [e.g., "AI Impact on Employment"]
+**Article A's Position**: [Specific claim with evidence]
+- Quote: "[Exact quotable passage]" (Author, Year, p. X)
+- Evidence type: [Survey data / Expert opinion / Case study / etc.]
+- Strength: [Strong/Moderate/Weak because...]
+
+**Article B's Position**: [Specific claim with evidence]
+- Quote: "[Exact quotable passage]" (Author, Year, p. X)
+- Evidence type: [Survey data / Expert opinion / Case study / etc.]
+- Strength: [Strong/Moderate/Weak because...]
+
+**Synthesis**:
+- Points of agreement: [Where they align]
+- Points of conflict: [Where they disagree]
+- Why they differ: [Different methods / samples / time periods / theoretical frameworks]
+- Implication for student: [How to use both in a balanced argument]
+
+## 3. METHODOLOGICAL COMPARISON (Only if it affects conclusions)
+- **ONLY include this if methodological differences explain conflicting findings**
+- Example: "Article A surveyed 100 students in 2020; Article B interviewed 15 experts in 2024 - the temporal difference matters because AI adoption accelerated post-2020"
+- **Do NOT include generic methodology descriptions**
+
+## 4. SYNTHESIS FOR STUDENT WRITING
+Provide 2-3 paragraph templates they can adapt:
+
+**For a balanced literature review:**
+"Both [Author A] and [Author B] address [topic], but from different perspectives. While [Author A] emphasizes [key point with quote], [Author B] argues [contrasting point with quote]. This tension reflects [underlying reason for disagreement]. A comprehensive understanding requires acknowledging both [synthesis statement]."
+
+**For an argumentative essay (Pro position):**
+"[Use Article B's strongest evidence as primary support, acknowledge Article A's concerns as addressable limitations]"
+
+**For an argumentative essay (Con position):**
+"[Use Article A's strongest evidence as primary support, address Article B's counterarguments]"
+
+## 5. QUICK REFERENCE TABLE
+| Dimension | Article A | Article B |
+|-----------|-----------|-----------|
+| Main Claim | [One sentence] | [One sentence] |
+| Best Evidence | [Specific example] | [Specific example] |
+| Limitations | [What it doesn't address] | [What it doesn't address] |
+| Best Quote | "[Quote]" (p. X) | "[Quote]" (p. X) |
+| When to Cite | [Use case] | [Use case] |
+
+# RULES
+
+DO NOT:
+- Lecture about source credibility unless sources are obviously fake/propaganda
+- Organize sections by "Evidence Quality Assessment" or "Scholarly Rigor"
+- Provide generic citation advice ("always use peer-reviewed sources")
+- Say "content not accessible" - if you can't read it, tell user to paste full text and STOP
+- Compare publication venues (blog vs journal) unless explicitly asked
+- Use condescending academic tone
+
+DO:
+- Extract specific claims and evidence from each article
+- Show where articles agree AND disagree on specific points
+- Explain WHY they disagree (methodology, sample, timeframe, theory)
+- Provide quotable passages with page numbers/citations
+- Generate usable synthesis paragraphs
+- Focus on CONTENT, not source type
+- Use student-friendly, practical language
+
+# OUTPUT FORMAT
+
+Use markdown with clear headers:
+
+# Quick Comparison Overview
+[4-5 bullet points hitting main agreement, disagreement, strongest evidence, best uses]
+
+# Thematic Analysis
+## [Theme 1 - e.g., "Economic Impact"]
+[Article A position + quote]
+[Article B position + quote]
+[Synthesis]
+
+## [Theme 2 - e.g., "Ethical Concerns"]
+[Article A position + quote]
+[Article B position + quote]
+[Synthesis]
+
+[Continue for 3-5 major themes]
+
+# Methodological Notes
+[ONLY if relevant to understanding conflicts]
+
+# How to Use These Sources in Your Paper
+[2-3 paragraph templates for different argument types]
+
+# Quick Reference
+[Comparison table]
+
+# Research Gaps
+[What NEITHER article addresses - helps student identify contribution opportunities]
+
+---
+
+After your written analysis, end your response with this JSON block so the student can see a visual summary. Do NOT skip this block.
+
+```json
+{
+  "graph_data": {
+    "title": "Article Comparison",
+    "type": "bar",
+    "data": [
+      {"name": "Argument Strength", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>},
+      {"name": "Evidence Quality", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>},
+      {"name": "Practical Relevance", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>},
+      {"name": "Synthesis Value", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>}
+    ],
+    "x_label": "Evaluation Criteria",
+    "y_label": "Score (1-10)",
+    "description": "Comparative scoring of both articles across key dimensions for student writing",
+    "key_insight": "<one sentence about which article is stronger and for what purpose>",
+    "why_matters": "<why this comparison helps the student write a better paper>",
+    "insight_type": "primary",
+    "ai_insights": ["<thematic insight>", "<evidence insight>", "<practical writing recommendation>"],
+    "themes_identified": ["<theme 1 name>", "<theme 2 name>", "<theme 3 name>"],
+    "comparison_summary": {
+      "similarity_score": <0-100>,
+      "key_differences": ["<difference 1>", "<difference 2>", "<difference 3>"],
+      "complementary_areas": ["<area 1>", "<area 2>"],
+      "conflicting_areas": ["<area 1>", "<area 2>"],
+      "student_recommendation": "<which article to prioritize and why>",
+      "citation_strategy": "<how to use both articles effectively in a paper>"
+    }
+  }
+}
+```
+
+Note: scores are AI-assessed estimates based on the provided content excerpts, not computed metrics. Be conservative — avoid scores above 8 unless the evidence clearly justifies it.
+"""
+
+
 async def generate_article_comparison_report(
     article1: Dict, article2: Dict, focus: str = "overall", context: Optional[str] = None
 ) -> str:
     """Generates a structured comparison report between two articles."""
-    focus_instructions = {
-        "methodology": "Focus primarily on comparing research methods, data collection, and analytical frameworks.",
-        "findings": "Focus on comparing key findings, results, and evidence presented in both articles.",
-        "overall": "Provide a comprehensive comparison covering methodology, findings, writing style, and implications.",
-    }
-    focus_instruction = focus_instructions.get(focus, focus_instructions["overall"])
-    context_section = f"\nUser context: {context}\nTailor your analysis to be relevant to this context." if context else ""
+    if not claude_client:
+        raise RuntimeError("Claude client not initialized. Check ANTHROPIC_API_KEY.")
 
-    system = f"""You are an academic writing assistant helping students compare research articles.
-{focus_instruction}{context_section}
+    # Validate content extraction — fail fast with a helpful message
+    article1_content = article1.get("content", "").strip()
+    article2_content = article2.get("content", "").strip()
+    min_content_length = 200
 
-Be practical and student-focused. Every assessment must be grounded in the actual article content provided.
+    if len(article1_content) < min_content_length:
+        return f"""# Content Extraction Failed for Article 1
 
-Important: When generating numerical scores for the chart, add a note that these are AI-assessed scores based on the provided content excerpts, not computed metrics. Be conservative — avoid scores above 8 unless evidence clearly justifies it."""
+I couldn't extract enough content from **{article1.get('title', 'Article 1')}**.
 
-    user = f"""Compare these two articles:
+**What you can do:**
+1. Copy the full article text and paste it into the "Article 1 text" field
+2. Make sure the URL is publicly accessible (not behind a paywall)
+3. Try a different URL if available
 
-ARTICLE 1: {article1.get('title', 'Article 1')}
-{article1.get('content', '')[:6000]}
+**Article 1 URL attempted:** {article1.get('url', 'No URL provided')}
+**Content extracted:** {len(article1_content)} characters (need at least {min_content_length})
+"""
 
-ARTICLE 2: {article2.get('title', 'Article 2')}
-{article2.get('content', '')[:6000]}
+    if len(article2_content) < min_content_length:
+        return f"""# Content Extraction Failed for Article 2
 
-Write a structured comparison report with:
-1. Executive Summary (4-5 bullet points)
-2. Comparative Overview (table: thesis, methodology, main finding, evidence quality)
-3. Detailed Analysis (methodology, evidence quality, practical implications, scholarly rigor)
-4. Synthesis (complementary insights, conflicting areas)
-5. Final Recommendation (which to cite for what purpose, citation strategy)
+I couldn't extract enough content from **{article2.get('title', 'Article 2')}**.
 
-End with this JSON block:
-```json
-{{
-  "graph_data": {{
-    "title": "Article Comparison: {article1.get('title', 'Article 1')[:30]} vs {article2.get('title', 'Article 2')[:30]}",
-    "type": "bar",
-    "data": [
-      {{"name": "Methodology Rigor", "value": <score_1_1-10>, "value2": <score_2_1-10>}},
-      {{"name": "Evidence Quality", "value": <score_1_1-10>, "value2": <score_2_1-10>}},
-      {{"name": "Practical Relevance", "value": <score_1_1-10>, "value2": <score_2_1-10>}},
-      {{"name": "Scholarly Rigor", "value": <score_1_1-10>, "value2": <score_2_1-10>}}
-    ],
-    "x_label": "Evaluation Criteria",
-    "y_label": "Score (1-10)",
-    "description": "Comparative scoring of both articles across key academic criteria",
-    "key_insight": "One sentence about which article is stronger and for what purpose",
-    "why_matters": "Why this comparison helps the student",
-    "insight_type": "primary",
-    "ai_insights": ["Methodological insight", "Evidence insight", "Practical recommendation"],
-    "comparison_summary": {{
-      "similarity_score": <0-100>,
-      "key_differences": ["difference 1", "difference 2", "difference 3"],
-      "complementary_areas": ["area 1", "area 2"],
-      "conflicting_areas": ["area 1", "area 2"],
-      "student_recommendation": "Which article to prioritize and why",
-      "citation_strategy": "How to use both articles effectively"
-    }}
-  }}
-}}
-```"""
+**What you can do:**
+1. Copy the full article text and paste it into the "Article 2 text" field
+2. Make sure the URL is publicly accessible (not behind a paywall)
+3. Try a different URL if available
+
+**Article 2 URL attempted:** {article2.get('url', 'No URL provided')}
+**Content extracted:** {len(article2_content)} characters (need at least {min_content_length})
+"""
+
+    # Build user message
+    user_prompt = f"""Compare these two articles for a student literature review/essay:
+
+# ARTICLE 1: {article1.get('title', 'Article 1')}
+{article1_content[:6000]}
+
+# ARTICLE 2: {article2.get('title', 'Article 2')}
+{article2_content[:6000]}
+
+"""
+
+    # Append focus instruction if not the default
+    if focus and focus != "overall":
+        focus_instructions = {
+            "methodology": "Focus your thematic comparison on methodological differences and how they affect conclusions.",
+            "findings": "Focus your thematic comparison on findings/results and where they agree or conflict.",
+        }
+        user_prompt += f"\n**COMPARISON FOCUS:** {focus_instructions.get(focus, focus)}\n"
+
+    # Append assignment context if provided
+    if context:
+        user_prompt += f"""
+**STUDENT'S ASSIGNMENT CONTEXT:**
+{context}
+
+Tailor your thematic comparison to help with this specific assignment. Identify which article better supports different positions the student might take.
+"""
+
+    user_prompt += "\nGenerate a comprehensive thematic comparison following the framework above."
 
     try:
-        return call_claude(system, user, max_tokens=5000)
+        message = claude_client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=5000,
+            temperature=0.3,
+            system=ARTICLE_COMPARISON_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        return message.content[0].text
     except Exception as e:
         logger.error("Article comparison failed: %s", e)
         return "An error occurred while generating the comparison report. Please try again."
@@ -2270,6 +2443,16 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         metadata_json["comparison_focus"] = body.comparison_focus or "overall"
         metadata_json["context"] = body.context
         metadata_json["sources_used"] = 2
+
+        graph_data = metadata_json.get("graph_data", {})
+        comparison_summary = graph_data.get("comparison_summary", {})
+
+        metadata_json["themes_identified"] = graph_data.get("themes_identified", [])
+        metadata_json["key_conflicts"] = comparison_summary.get("conflicting_areas", [])
+        metadata_json["content_extracted_successfully"] = {
+            "article1": len((article1.get("content") or "").strip()) > 200,
+            "article2": len((article2.get("content") or "").strip()) > 200,
+        }
 
         message_to_save = {
             "conversation_id": convo_id,
