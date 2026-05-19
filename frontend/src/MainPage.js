@@ -12,6 +12,7 @@ import { apiFetch, AUTH_REQUIRED } from './apiClient';
 const MainPage = () => {
   const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
+  const [conversationType, setConversationType] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeNodeIndex, setActiveNodeIndex] = useState(0);
   const [exportSelections, setExportSelections] = useState([]);
@@ -26,6 +27,7 @@ const MainPage = () => {
     } else {
       setMessages([]);
       setConversationId(null);
+      setConversationType(null);
     }
   }, [location.search]);
 
@@ -35,10 +37,16 @@ const MainPage = () => {
       const response = await apiFetch(config.endpoints.messages(convoId));
       if (response.ok) {
         const data = await response.json();
-        setMessages(data);
+        // Backend now returns { messages, conversation_type }; tolerate the
+        // older array-only shape during deploy transitions.
+        const messagesList = Array.isArray(data) ? data : (data.messages || []);
+        const convType = Array.isArray(data) ? null : (data.conversation_type || null);
+        setMessages(messagesList);
+        setConversationType(convType);
       } else {
         console.error("Failed to fetch messages");
         setMessages([]);
+        setConversationType(null);
       }
     } catch (error) {
       if (error?.message !== AUTH_REQUIRED && error?.code !== AUTH_REQUIRED) {
@@ -52,10 +60,19 @@ const MainPage = () => {
   const handlePromptSubmit = async (prompt) => {
     setIsLoading(true);
 
-    const requestBody = { prompt, conversation_id: conversationId };
+    const isComparisonFollowup =
+      !!conversationId && conversationType === 'article_comparison';
+
+    const endpoint = isComparisonFollowup
+      ? config.endpoints.comparisonFollowup
+      : config.endpoints.research;
+
+    const requestBody = isComparisonFollowup
+      ? { conversation_id: conversationId, message: prompt }
+      : { prompt, conversation_id: conversationId };
 
     try {
-      const response = await apiFetch(config.endpoints.research, {
+      const response = await apiFetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -66,6 +83,10 @@ const MainPage = () => {
       if (response.ok) {
         const data = await response.json();
         console.log('Received from backend:', data);
+
+        if (data.conversation_type) {
+          setConversationType(data.conversation_type);
+        }
 
         if (!conversationId) {
           setConversationId(data.conversation_id);

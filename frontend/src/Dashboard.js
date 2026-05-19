@@ -1015,7 +1015,10 @@ const Dashboard = () => {
     try {
       const response = await apiFetch(config.endpoints.messages(exportSelectedId));
       if (!response.ok) throw new Error('Failed to load report');
-      const messages = await response.json();
+      const payload = await response.json();
+      // Backend now returns { messages, conversation_type }; tolerate the
+      // older array-only shape during deploy transitions.
+      const messages = Array.isArray(payload) ? payload : (payload?.messages || []);
       const conv = allConversations.find(
         (c) => c.id === exportSelectedId || String(c.id) === String(exportSelectedId),
       );

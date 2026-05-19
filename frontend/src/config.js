@@ -23,6 +23,7 @@ export const config = {
     conversations: `${API_BASE_URL}/conversations`,
     folders: `${API_BASE_URL}/folders`,
     compareArticles: `${API_BASE_URL}/compare-articles`,
+    comparisonFollowup: `${API_BASE_URL}/comparison-followup`,
     citationMetadata: `${API_BASE_URL}/citation-metadata`,
     betaSignupStatus: `${API_BASE_URL}/beta-signup-status`,
   }
