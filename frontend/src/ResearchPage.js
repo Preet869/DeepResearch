@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from './Header';
 import LayeredResearchDisplay from './LayeredResearchDisplay';
 import ExportManager from './components/ExportManager';
+import { getResearchTurns } from './utils/researchExportTurns';
 import CitationHelper from './components/CitationHelper';
 import Analytics from './components/Analytics';
 import ResearchLibrary from './components/ResearchLibrary';
@@ -523,14 +524,15 @@ const ResearchPage = () => {
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
+  const [conversationType, setConversationType] = useState(null);
   const [conversationTitle, setConversationTitle] = useState('');
   const [folderId, setFolderId] = useState(null);
   const [activeNodeIndex, setActiveNodeIndex] = useState(0);
-  const [exportSelections, setExportSelections] = useState([]);
   const [expandedFollowUpSlot, setExpandedFollowUpSlot] = useState(null);
   const [customFollowUpQuery, setCustomFollowUpQuery] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showExportManager, setShowExportManager] = useState(false);
+  const [exportInitialScope, setExportInitialScope] = useState({ mode: 'turn', turnIndex: 0 });
   const [showCitationHelper, setShowCitationHelper] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showResearchLibrary, setShowResearchLibrary] = useState(false);
@@ -585,20 +587,24 @@ const ResearchPage = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setMessages(data);
-        
-        // Get conversation title from first user message
-        const firstUserMessage = data.find(msg => msg.role === 'user');
+        // Backend now returns { messages, conversation_type }; tolerate the
+        // older array-only shape during deploy transitions.
+        const messagesList = Array.isArray(data) ? data : (data.messages || []);
+        const convType = Array.isArray(data) ? null : (data.conversation_type || null);
+        setMessages(messagesList);
+        setConversationType(convType);
+
+        const firstUserMessage = messagesList.find(msg => msg.role === 'user');
         if (firstUserMessage) {
           setConversationTitle(firstUserMessage.content.slice(0, 50) + '...');
         }
 
-        // Track conversation load
         analyticsService.track('conversation_loaded', {
           conversation_id: convoId,
-          messages_count: data.length,
+          messages_count: messagesList.length,
           load_time_ms: Date.now() - startTime,
-          has_title: !!firstUserMessage
+          has_title: !!firstUserMessage,
+          conversation_type: convType
         });
       }
     } catch (error) {
@@ -679,14 +685,29 @@ const ResearchPage = () => {
     setInputValue('');
 
     try {
-      const requestBody = {
-        prompt: queryText,
-        conversation_id: conversationId || undefined,
-        folder_id: folderId || undefined,
-        force_process: forceProcess
-      };
+      // Route comparison follow-ups to the comparison endpoint so the web
+      // research pipeline is not triggered on conversations that started as
+      // article comparisons.
+      const isComparisonFollowup =
+        !!conversationId && conversationType === 'article_comparison';
 
-      const response = await apiFetch(config.endpoints.research, {
+      const endpoint = isComparisonFollowup
+        ? config.endpoints.comparisonFollowup
+        : config.endpoints.research;
+
+      const requestBody = isComparisonFollowup
+        ? {
+            conversation_id: conversationId,
+            message: queryText,
+          }
+        : {
+            prompt: queryText,
+            conversation_id: conversationId || undefined,
+            folder_id: folderId || undefined,
+            force_process: forceProcess,
+          };
+
+      const response = await apiFetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -697,7 +718,11 @@ const ResearchPage = () => {
       if (response.ok) {
         const data = await response.json();
         const processingTime = Date.now() - startTime;
-        
+
+        if (data.conversation_type) {
+          setConversationType(data.conversation_type);
+        }
+
         if (!conversationId) {
           setConversationId(data.conversation_id);
           // Update URL to include conversation ID
@@ -939,14 +964,26 @@ const ResearchPage = () => {
     setMessages(prev => [...prev, userMessage]);
 
     try {
-      const requestBody = {
-        prompt: query,
-        conversation_id: conversationId || undefined,
-        folder_id: folderId || undefined,
-        force_process: forceProcess
-      };
+      const isComparisonFollowup =
+        !!conversationId && conversationType === 'article_comparison';
 
-      const response = await apiFetch(`${config.API_BASE_URL}/research`, {
+      const endpoint = isComparisonFollowup
+        ? config.endpoints.comparisonFollowup
+        : config.endpoints.research;
+
+      const requestBody = isComparisonFollowup
+        ? {
+            conversation_id: conversationId,
+            message: query,
+          }
+        : {
+            prompt: query,
+            conversation_id: conversationId || undefined,
+            folder_id: folderId || undefined,
+            force_process: forceProcess,
+          };
+
+      const response = await apiFetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -956,7 +993,11 @@ const ResearchPage = () => {
 
       if (response.ok) {
         const data = await response.json();
-        
+
+        if (data.conversation_type) {
+          setConversationType(data.conversation_type);
+        }
+
         if (!conversationId) {
           setConversationId(data.conversation_id);
           const newSearchParams = new URLSearchParams(searchParams);
@@ -1007,13 +1048,24 @@ const ResearchPage = () => {
     }
   };
 
-  const handleExportToggle = (nodeIndex) => {
-    setExportSelections(prev => 
-      prev.includes(nodeIndex) 
-        ? prev.filter(i => i !== nodeIndex)
-        : [...prev, nodeIndex]
-    );
+  const handleOpenExportManager = () => {
+    const turns = getResearchTurns(messages);
+    const scope =
+      turns.length > 0 && turns.some((t) => t.turnIndex === activeNodeIndex)
+        ? { mode: 'turn', turnIndex: activeNodeIndex }
+        : turns.length > 0
+          ? { mode: 'turn', turnIndex: turns[0].turnIndex }
+          : { mode: 'all' };
+    setExportInitialScope(scope);
+    setShowExportManager(true);
+    analyticsService.trackFeatureUsage('export_manager', 'opened', {
+      conversation_id: conversationId,
+      turns_count: turns.length,
+      turn_index: scope.mode === 'turn' ? scope.turnIndex : null,
+    });
   };
+
+  const hasExportableTurns = getResearchTurns(messages).length > 0;
 
   const handleFollowUp = (suggestion) => {
     // Follow-ups are always allowed on existing reports, even when quota is exhausted
@@ -1201,13 +1253,6 @@ const ResearchPage = () => {
                           : 'Ready to start'}
                       </div>
                     </div>
-                    {exportSelections[0] && (
-                      <div className="ml-2 text-green-600">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
-                        </svg>
-                      </div>
-                    )}
                   </button>
 
                   {/* Follow-up Slots */}
@@ -1257,13 +1302,6 @@ const ResearchPage = () => {
                             : expandedFollowUpSlot === slot ? 'Adding Follow-up' : `Click to Add Follow-up`}
                         </div>
                       </div>
-                      {exportSelections[slot] && (
-                        <div className="ml-2 text-green-600">
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
-                          </svg>
-                        </div>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -1273,31 +1311,34 @@ const ResearchPage = () => {
               <div>
                 <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--fg)' }}>Research Tools</h3>
                 <div className="space-y-3">
-                  <button 
-                    onClick={() => {
-                      setShowExportManager(true);
-                      analyticsService.trackFeatureUsage('export_manager', 'opened', {
-                        conversation_id: conversationId,
-                        messages_count: messages.length,
-                        selections_count: Object.values(exportSelections).filter(Boolean).length
-                      });
-                    }}
-                    className="w-full p-3 text-left rounded-lg transition-colors hover:opacity-95"
+                  <button
+                    type="button"
+                    disabled={!hasExportableTurns}
+                    onClick={handleOpenExportManager}
+                    className="w-full p-3 text-left rounded-lg transition-colors hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ border: '1px solid var(--line)', background: 'var(--paper)' }}
                   >
                     <div className="flex items-center">
-                      <svg className="w-4 h-4 mr-3" style={{ color: 'var(--mut)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <svg
+                        className="w-4 h-4 mr-3 shrink-0"
+                        style={{ color: 'var(--mut)' }}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
                       </svg>
-                      <span className="text-sm font-medium">Export Manager</span>
-                      {Object.values(exportSelections).some(Boolean) && (
-                        <span className="ml-auto text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                          {Object.values(exportSelections).filter(Boolean).length} selected
-                        </span>
-                      )}
+                      <span className="text-sm font-medium" style={{ color: 'var(--fg)' }}>
+                        Export PDF
+                      </span>
                     </div>
                   </button>
-                  
+
                   <button 
                     onClick={() => {
                       setShowCitationHelper(true);
@@ -1405,8 +1446,6 @@ const ResearchPage = () => {
                           activeNodeIndex={activeNodeIndex}
                           onNodeSelect={handleNodeSelect}
                           onAddFollowup={handleAddFollowup}
-                          exportSelections={exportSelections}
-                          onExportToggle={handleExportToggle}
                         />
                       )}
 
@@ -1480,7 +1519,9 @@ const ResearchPage = () => {
         <ExportManager
           messages={messages}
           conversationTitle={conversationTitle}
-          exportSelections={exportSelections}
+          conversationType={conversationType}
+          conversationId={conversationId}
+          initialScope={exportInitialScope}
           onClose={() => setShowExportManager(false)}
         />
       )}

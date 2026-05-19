@@ -233,6 +233,11 @@ class ArticleComparisonRequest(BaseModel):
     folder_id: Optional[int] = None
 
 
+class ComparisonFollowupRequest(BaseModel):
+    conversation_id: int
+    message: str = Field(..., max_length=5000)
+
+
 class BetaReviewRequest(BaseModel):
     review: str = Field(..., max_length=2000)
     rating: Optional[int] = Field(None, ge=1, le=5)  # Optional 1-5 star rating
@@ -307,16 +312,24 @@ def _auth_uid(user: Any) -> str:
 
 
 # --- Claude Helper ---
-def call_claude(system_prompt: str, user_content: str, max_tokens: int = 2000) -> str:
+def call_claude(
+    system_prompt: str,
+    user_content: str,
+    max_tokens: int = 2000,
+    temperature: Optional[float] = None,
+) -> str:
     """Synchronous Claude API call. Returns text content."""
     if not claude_client:
         raise RuntimeError("Claude client not initialized. Check ANTHROPIC_API_KEY.")
-    message = claude_client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": user_content}],
-        system=system_prompt,
-    )
+    kwargs: Dict[str, Any] = {
+        "model": "claude-sonnet-4-5",
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": user_content}],
+        "system": system_prompt,
+    }
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    message = claude_client.messages.create(**kwargs)
     return message.content[0].text
 
 # =============================================================================
@@ -1093,9 +1106,60 @@ async def _fetch_citation_metadata_for_url(client: httpx.AsyncClient, url: str) 
 # =============================================================================
 # ARTICLE COMPARISON REPORT
 # =============================================================================
-ARTICLE_COMPARISON_PROMPT = """You are analyzing two academic articles for a student writing a literature review or comparative essay.
+ARTICLE_COMPARISON_PROMPT = """You are analyzing two complete academic articles for a student writing a literature review or comparative essay.
 
 YOUR JOB: Help them synthesize these sources into their paper, NOT evaluate source credibility.
+
+# CONTENT VALIDATION RULE
+
+You have been provided with the FULL TEXT of both articles (not excerpts). 
+
+❌ **NEVER write**:
+- "Article excerpt does not provide..."
+- "Insufficient content in excerpt..."
+- "Cannot assess from excerpt..."
+- "Based on provided excerpt..."
+
+✅ **IF** an article genuinely lacks content on a theme:
+- "Article A does not address [theme]"
+- "While Article B discusses X extensively, Article A focuses on Y instead"
+
+✅ **IF** you truly cannot find specific claims:
+- Quote the most relevant passage you CAN find
+- Explain what the article emphasizes instead
+- Example: "Article A does not provide specific technical examples of bias mechanisms; instead, it focuses on broader societal implications such as [quote actual content]"
+
+The user provided complete articles. Extract and compare the actual content, not hedged assessments.
+
+# HANDLING MULTI-PERSPECTIVE ARTICLES
+
+If an article contains multiple expert perspectives (e.g., interviews with 3 faculty members):
+
+❌ **DO NOT** create separate thematic sections for each expert
+❌ **DO NOT** compare Expert A vs Expert B within the same article
+
+✅ **DO** synthesize all perspectives from one article into a unified position per theme
+✅ **DO** note when experts within the same article have different emphases
+✅ **DO** compare Article A's overall position vs Article B's overall position
+
+**Example - WRONG:**
+Theme: AI Bias
+- Virginia Tech (Losey) Position: [...]
+- Virginia Tech (Rho) Position: [...]  
+- NAPS Position: [Insufficient]
+
+**Example - CORRECT:**
+Theme: AI Bias
+- **Article A (NAPS) Position**: AI algorithms perpetuate societal biases because [extract actual claims from NAPS article]
+  - Quote: "[actual quote from NAPS]"
+  - Evidence: [what NAPS provides]
+  
+- **Article B (Virginia Tech) Position**: Multiple faculty experts agree bias stems from incomplete training data (Losey) and can reduce critical thinking (Rho)
+  - Quote: "If the designers do not provide representative data, the resulting AI systems become biased" (Losey)
+  - Quote: "There is a potential risk of diminishing critical thinking skills" (Rho)
+  - Evidence: Expert technical explanations from mechanical engineering and CS perspectives
+  
+- **Synthesis**: Both articles identify AI bias as concerning. Article A frames it as [X], while Article B provides technical explanation through [Y]. They agree on problem existence but differ in [how they explain it / solutions proposed / depth of analysis].
 
 # ANALYSIS FRAMEWORK
 
@@ -1107,29 +1171,44 @@ YOUR JOB: Help them synthesize these sources into their paper, NOT evaluate sour
 - **Best use**: When to cite Article A vs Article B in their paper
 
 ## 2. THEMATIC COMPARISON (Core of report)
-Organize by THEMES, not by source. For each major theme:
 
-### Theme: [e.g., "AI Impact on Employment"]
-**Article A's Position**: [Specific claim with evidence]
-- Quote: "[Exact quotable passage]" (Author, Year, p. X)
-- Evidence type: [Survey data / Expert opinion / Case study / etc.]
-- Strength: [Strong/Moderate/Weak because...]
+**CRITICAL: Use the new structure below to avoid empty sections**
 
-**Article B's Position**: [Specific claim with evidence]
-- Quote: "[Exact quotable passage]" (Author, Year, p. X)
-- Evidence type: [Survey data / Expert opinion / Case study / etc.]
-- Strength: [Strong/Moderate/Weak because...]
+Organize themes into TWO categories:
 
-**Synthesis**:
-- Points of agreement: [Where they align]
-- Points of conflict: [Where they disagree]
-- Why they differ: [Different methods / samples / time periods / theoretical frameworks]
-- Implication for student: [How to use both in a balanced argument]
+### OVERLAPPING THEMES (Both articles address these)
+For each theme both articles discuss, provide full comparison with quotes from both.
 
-## 3. METHODOLOGICAL COMPARISON (Only if it affects conclusions)
-- **ONLY include this if methodological differences explain conflicting findings**
-- Example: "Article A surveyed 100 students in 2020; Article B interviewed 15 experts in 2024 - the temporal difference matters because AI adoption accelerated post-2020"
-- **Do NOT include generic methodology descriptions**
+### UNIQUE THEMES  
+- **Themes Unique to Article 1**: List what only Article 1 covers, with brief explanation and implication
+- **Themes Unique to Article 2**: List what only Article 2 covers, with brief explanation and implication
+
+**RULE**: If a theme appears in only one article, DO NOT create an empty comparison section. Instead, note it as a unique contribution and explain why it matters for the student's argument.
+
+**Example of WRONG approach**:
+Theme: Privacy and Surveillance
+- Article A Position: [full analysis]
+- Article B Position: "Article B does not address this theme"
+
+**Example of CORRECT approach**:
+Under "Themes Unique to Article 1":
+**Privacy and Surveillance** (Article 1 only)
+Article 1 warns that "AI technologies enable extensive surveillance and data collection, raising concerns about privacy invasion." Article 2 focuses on algorithmic bias instead.
+**Implication**: If your paper needs to discuss surveillance specifically, Article 1 is your only source here. You'll need additional academic sources on AI surveillance to strengthen this argument.
+
+## 3. METHODOLOGICAL NOTES
+
+**Keep this section to 2-3 sentences maximum.**
+
+Only include if:
+- Methodological differences DIRECTLY explain why articles reach different conclusions
+- Example: "Article A surveyed 1,000 consumers in 2020; Article B interviewed 15 AI researchers in 2024. The different methods explain why Article A emphasizes user concerns while Article B emphasizes technical capabilities."
+
+❌ **DO NOT** include generic statements about source credibility
+❌ **DO NOT** lecture about "why one article is stronger"
+❌ **DO NOT** discuss author credentials unless directly relevant to conflicting claims
+
+If methods don't explain differences in conclusions, SKIP THIS SECTION ENTIRELY.
 
 ## 4. SYNTHESIS FOR STUDENT WRITING
 Provide 2-3 paragraph templates they can adapt:
@@ -1144,13 +1223,34 @@ Provide 2-3 paragraph templates they can adapt:
 "[Use Article A's strongest evidence as primary support, address Article B's counterarguments]"
 
 ## 5. QUICK REFERENCE TABLE
-| Dimension | Article A | Article B |
-|-----------|-----------|-----------|
-| Main Claim | [One sentence] | [One sentence] |
-| Best Evidence | [Specific example] | [Specific example] |
-| Limitations | [What it doesn't address] | [What it doesn't address] |
-| Best Quote | "[Quote]" (p. X) | "[Quote]" (p. X) |
-| When to Cite | [Use case] | [Use case] |
+
+**STRICT FORMATTING RULES - Each table cell must be:**
+- Maximum 10-12 words
+- One sentence or short phrase only
+- No quotes longer than 5 words in the table itself
+
+| Dimension | Article A: [Title] | Article B: [Title] |
+|-----------|-------------------|-------------------|
+| **Main Claim** | [Max 12 words] | [Max 12 words] |
+| **Best Evidence** | [Max 12 words] | [Max 12 words] |
+| **Limitations** | [Max 12 words] | [Max 12 words] |
+| **Best Quote** | "[Max 5 words]" (full quote in Thematic Analysis) | "[Max 5 words]" (full quote in Thematic Analysis) |
+| **When to Cite** | [Max 12 words] | [Max 12 words] |
+
+Keep the table scannable. Full quotes belong in the Thematic Analysis sections, not here.
+
+# HANDLING QUALITY DIFFERENCES
+
+If one article is clearly more detailed/technical/credible than the other:
+
+❌ **DO NOT** dismiss the weaker article as "insufficient"
+❌ **DO NOT** spend paragraphs explaining why one is better
+
+✅ **DO** extract what the weaker article DOES contribute
+✅ **DO** note differences matter-of-factly: "Article A provides general overview while Article B offers technical depth"
+✅ **DO** suggest when each is useful: "Article A works for introducing the topic; Article B provides evidence for detailed analysis"
+
+Students chose both articles for a reason. Help them use both effectively, even if quality differs.
 
 # RULES
 
@@ -1161,84 +1261,192 @@ DO NOT:
 - Say "content not accessible" - if you can't read it, tell user to paste full text and STOP
 - Compare publication venues (blog vs journal) unless explicitly asked
 - Use condescending academic tone
+- Use ANY form of "excerpt" or "insufficient content" language
 
 DO:
-- Extract specific claims and evidence from each article
+- Extract specific claims and evidence from BOTH articles
 - Show where articles agree AND disagree on specific points
 - Explain WHY they disagree (methodology, sample, timeframe, theory)
-- Provide quotable passages with page numbers/citations
+- Provide quotable passages with citations
 - Generate usable synthesis paragraphs
 - Focus on CONTENT, not source type
 - Use student-friendly, practical language
+- Treat both articles as complete sources worth comparing
 
 # OUTPUT FORMAT
 
 Use markdown with clear headers:
 
-# Quick Comparison Overview
+# How to Use This Report
+
+**If you're writing a literature review**: Start with Thematic Analysis → use the Synthesis paragraphs to show how sources relate
+
+**If you're writing an argumentative essay**: Go straight to "How to Use These Sources in Your Paper" → pick the template matching your position
+
+**If you need specific quotes**: Check Quick Comparative Overview → then find full quotes in Thematic Analysis sections
+
+**If you're evaluating source quality**: Read Methodological Notes (but keep it brief in your paper)
+
+**If you need more sources**: Skip to Research Gaps → follow the search recommendations
+
+---
+
+# Quick Comparative Overview
+
+## At-a-Glance Scores
+
+| Criteria | Article 1 | Article 2 | Why It Matters |
+|----------|-----------|-----------|----------------|
+| Argument Strength | ★★★☆☆ (X/10) | ★★★★☆ (Y/10) | [Brief explanation of scoring difference] |
+| Evidence Quality | ★★☆☆☆ (X/10) | ★★★★☆ (Y/10) | [Brief explanation of evidence differences] |
+| Practical Relevance | ★★★☆☆ (X/10) | ★★★★★ (Y/10) | [Brief explanation of relevance differences] |
+| Synthesis Value | ★★★☆☆ (X/10) | ★★★★☆ (Y/10) | [Brief explanation of synthesis utility] |
+
+**Key Insight**: [One sentence about which article is stronger overall and why]
+
 [4-5 bullet points hitting main agreement, disagreement, strongest evidence, best uses]
 
 # Thematic Analysis
-## [Theme 1 - e.g., "Economic Impact"]
-[Article A position + quote]
-[Article B position + quote]
-[Synthesis]
 
-## [Theme 2 - e.g., "Ethical Concerns"]
-[Article A position + quote]
-[Article B position + quote]
-[Synthesis]
+## Overlapping Themes (Both Articles Address These)
 
-[Continue for 3-5 major themes]
+### [Theme 1 - e.g., "Economic Impact"]
+**Article A's Position**: [Specific claim with evidence - REQUIRED]
+- Quote: "[Exact quotable passage from Article A]"
+- Evidence type: [Survey data / Expert opinion / Case study / etc.]
+
+**Article B's Position**: [Specific claim with evidence - REQUIRED]  
+- Quote: "[Exact quotable passage from Article B]"
+- Evidence type: [Survey data / Expert opinion / Case study / etc.]
+
+**Synthesis**: [How they compare, agree, conflict, and implications for student]
+
+### [Theme 2 - e.g., "Ethical Concerns"]
+[Same structure as above]
+
+## Themes Unique to Article 1
+**[Theme Name]** (Article 1 only)
+[Brief explanation of what Article 1 covers that Article 2 doesn't, with key quote]
+
+**Implication**: [Why this matters for the student's argument and what it adds to their paper]
+
+## Themes Unique to Article 2  
+**[Theme Name]** (Article 2 only)
+[Brief explanation of what Article 2 covers that Article 1 doesn't, with key quote]
+
+**Implication**: [Why this matters for the student's argument and what it adds to their paper]
 
 # Methodological Notes
-[ONLY if relevant to understanding conflicts]
+
+**Maximum 2-3 sentences. Focus ONLY on explaining why articles reach different conclusions, not evaluating quality.**
+
+Example: "Article A provides a categorical overview of AI concerns for general audiences; Article B draws from three researchers' specific domains (robotics, human-computer interaction, computational social science). This explains why Article A covers more concern categories (employment, surveillance, existential risk) while Article B provides deeper technical explanations of fewer issues (bias mechanisms, current algorithmic influence)."
+
+**Do NOT judge which is "better" - explain differences, don't evaluate them.**
 
 # How to Use These Sources in Your Paper
 [2-3 paragraph templates for different argument types]
 
 # Quick Reference
-[Comparison table]
+[Comparison table with proper markdown formatting]
 
 # Research Gaps
-[What NEITHER article addresses - helps student identify contribution opportunities]
+
+### Gap 1: Quantitative Bias Data
+
+**What's missing**: Neither article provides comprehensive statistical data on bias prevalence across different AI systems and industries. We get general examples but lack systematic measurements.
+
+**To find it**: Search Google Scholar for "AI bias prevalence statistics" OR "algorithmic discrimination quantitative studies" OR "machine learning fairness metrics evaluation"
+
+**Recommended sources**: 
+- Papers from ACM FAccT Conference (Fairness, Accountability, and Transparency)
+- Reports from AI Now Institute and Partnership on AI
+- Studies from MIT's Computer Science and Artificial Intelligence Laboratory (CSAIL)
+- IEEE publications on algorithmic auditing
+
+**Why it matters**: Hard numbers on bias frequency and severity make your argument more compelling than relying solely on conceptual discussions.
+
+### Gap 2: Regulatory Frameworks and Policy Proposals
+
+**What's missing**: Both articles focus on problems but don't extensively cover existing or proposed regulatory solutions. Missing concrete policy recommendations and their effectiveness.
+
+**To find it**: Search Google Scholar for "AI regulation policy proposals" OR "algorithmic accountability legislation" OR "EU AI Act implementation studies"
+
+**Recommended sources**:
+- Brookings Institution AI governance reports
+- Stanford HAI (Human-Centered AI Institute) policy briefs
+- Papers from Berkeley Center for Long-Term Cybersecurity
+- Government reports from FTC, NIST, or European Commission
+
+**Why it matters**: Shows you understand the solution landscape, not just the problems, making your argument more sophisticated and actionable.
+
+### Gap 3: International/Comparative Perspectives on AI Governance
+
+**What's missing**: Both articles have a primarily US-centric view. Missing how other countries approach AI ethics and what we can learn from different regulatory approaches.
+
+**To find it**: Search Google Scholar for "comparative AI governance international" OR "EU vs US AI regulation differences" OR "China AI ethics policy comparison"
+
+**Recommended sources**:
+- Oxford Internet Institute publications
+- Cambridge Centre for AI in Medicine policy papers
+- Reports from Organisation for Economic Co-operation and Development (OECD)
+- Studies from Singapore's AI Governance initiatives
+
+**Why it matters**: International comparisons strengthen arguments about what regulatory approaches work best and show global scope of the issues.
+
+### Gap 4: Economic Impact Data (Employment Displacement Statistics)
+
+**What's missing**: While both articles mention job displacement concerns, neither provides detailed economic modeling or employment impact statistics across different sectors.
+
+**To find it**: Search Google Scholar for "AI automation employment statistics" OR "machine learning job displacement economics" OR "artificial intelligence labor market impact data"
+
+**Recommended sources**:
+- McKinsey Global Institute employment reports
+- Bureau of Labor Statistics AI impact studies
+- Papers from MIT Work of the Future initiative
+- World Economic Forum Future of Jobs reports
+
+**Why it matters**: Concrete economic data makes abstract concerns about AI impact tangible and helps quantify the scale of challenges discussed.
+
+### Gap 5: Long-term Sociological Studies on AI Interaction Effects
+
+**What's missing**: Both articles discuss current AI interactions but lack longitudinal studies on how prolonged AI use changes human behavior, decision-making, or social relationships over time.
+
+**To find it**: Search Google Scholar for "longitudinal AI human interaction studies" OR "social media algorithm behavior change" OR "human-computer interaction long-term effects"
+
+**Recommended sources**:
+- Papers from CHI Conference (Computer-Human Interaction)
+- Studies from Stanford's Human-Computer Interaction Group
+- Research from University of Washington's Center for an Informed Public
+- Publications from Pew Research Center on technology's social impact
+
+**Why it matters**: Long-term behavioral data helps you argue about future consequences rather than just current observations, making your analysis more forward-looking and comprehensive.
 
 ---
 
-After your written analysis, end your response with this JSON block so the student can see a visual summary. Do NOT skip this block.
+# Citation-Ready Quotes (Optional Enhancement)
 
-```json
-{
-  "graph_data": {
-    "title": "Article Comparison",
-    "type": "bar",
-    "data": [
-      {"name": "Argument Strength", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>},
-      {"name": "Evidence Quality", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>},
-      {"name": "Practical Relevance", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>},
-      {"name": "Synthesis Value", "value": <score_article_a_1-10>, "value2": <score_article_b_1-10>}
-    ],
-    "x_label": "Evaluation Criteria",
-    "y_label": "Score (1-10)",
-    "description": "Comparative scoring of both articles across key dimensions for student writing",
-    "key_insight": "<one sentence about which article is stronger and for what purpose>",
-    "why_matters": "<why this comparison helps the student write a better paper>",
-    "insight_type": "primary",
-    "ai_insights": ["<thematic insight>", "<evidence insight>", "<practical writing recommendation>"],
-    "themes_identified": ["<theme 1 name>", "<theme 2 name>", "<theme 3 name>"],
-    "comparison_summary": {
-      "similarity_score": <0-100>,
-      "key_differences": ["<difference 1>", "<difference 2>", "<difference 3>"],
-      "complementary_areas": ["<area 1>", "<area 2>"],
-      "conflicting_areas": ["<area 1>", "<area 2>"],
-      "student_recommendation": "<which article to prioritize and why>",
-      "citation_strategy": "<how to use both articles effectively in a paper>"
-    }
-  }
-}
-```
+**ONLY include this section if you find particularly strong, quotable passages that students can copy directly into their papers. Keep it concise - maximum 8-10 quotes total.**
 
-Note: scores are AI-assessed estimates based on the provided content excerpts, not computed metrics. Be conservative — avoid scores above 8 unless the evidence clearly justifies it.
+Organize by argument type for easy student navigation:
+
+**For arguments about AI bias mechanisms:**
+> "[Full quotable sentence from Article 1/2]" ([Author], [Year], [Source])
+
+**For arguments about current vs future AI threats:**
+> "[Full quotable sentence from Article 1/2]" ([Author], [Year], [Source])
+
+**For arguments about AI's decision-making influence:**
+> "[Full quotable sentence from Article 1/2]" ([Author], [Year], [Source])
+
+**For arguments about [relevant theme from your analysis]:**
+> "[Full quotable sentence from Article 1/2]" ([Author], [Year], [Source])
+
+*Note: Each quote should be citation-ready with proper attribution and represent the strongest, most quotable passages from each article.*
+
+---
+
+**Do NOT include any JSON blocks or raw data in the output. The visual scoring table in the Quick Comparative Overview section provides all the summary information students need.**
 """
 
 
@@ -1283,13 +1491,38 @@ I couldn't extract enough content from **{article2.get('title', 'Article 2')}**.
 """
 
     # Build user message
-    user_prompt = f"""Compare these two articles for a student literature review/essay:
+    user_prompt = f"""Compare these two articles for a student literature review/essay.
+
+CRITICAL INSTRUCTION: Both articles below are COMPLETE, not excerpts. You must extract and compare specific claims, arguments, and evidence from BOTH Article 1 and Article 2. 
+
+If Article 1 appears to be less detailed than Article 2, that may reflect writing style differences, but you must still extract what it DOES say about each theme. Do not dismiss Article 1 as "insufficient" - find and quote what it actually argues.
 
 # ARTICLE 1: {article1.get('title', 'Article 1')}
+Source: {article1.get('url', 'Text provided by user')}
+
 {article1_content[:6000]}
 
+---
+
 # ARTICLE 2: {article2.get('title', 'Article 2')}
+Source: {article2.get('url', 'Text provided by user')}
+
 {article2_content[:6000]}
+
+---
+
+For EACH theme, you must provide:
+1. What Article 1 says (with actual quotes from the text above)
+2. What Article 2 says (with actual quotes from the text above)  
+3. How they compare
+
+**QUOTE EXTRACTION RULES:**
+- NEVER include mid-word brackets like "m[essy" - either reconstruct the full word or use clear ellipsis
+- Use standard ellipsis for truncation: "As we begin [...] we may prefer" instead of "As we begin to converse more often with AI [...] we may prefer"
+- Ensure all quotes are complete sentences or clearly marked truncations
+- No extraction artifacts should appear in final quotes
+
+Do NOT skip Article 1 content. Extract what it argues even if less technical than Article 2.
 
 """
 
@@ -1781,7 +2014,7 @@ async def get_conversations(folder_id: Optional[int] = None, authorization: Anno
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        query = db.table("conversations").select("id, title, created_at, folder_id").eq("user_id", uid)
+        query = db.table("conversations").select("id, title, created_at, folder_id, conversation_type").eq("user_id", uid)
         if folder_id is not None:
             query = query.eq("folder_id", folder_id)
         response = query.order("created_at", desc=True).execute()
@@ -1802,12 +2035,17 @@ async def get_messages(conversation_id: int, authorization: Annotated[Optional[s
         if not db:
             raise HTTPException(status_code=503, detail="Database client not configured.")
 
-        convo_res = db.table("conversations").select("id").eq("id", conversation_id).eq("user_id", uid).execute()
+        convo_res = db.table("conversations").select("id, conversation_type").eq("id", conversation_id).eq("user_id", uid).execute()
         if not convo_res.data:
             raise HTTPException(status_code=404, detail="Conversation not found or access denied")
 
+        conv_type = (convo_res.data[0] or {}).get("conversation_type") or "research_report"
+
         messages_res = db.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=False).execute()
-        return messages_res.data or []
+        return {
+            "messages": messages_res.data or [],
+            "conversation_type": conv_type,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -2085,7 +2323,11 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
 
         if not convo_id:
             title = await generate_title(body.prompt)
-            conversation_data = {"user_id": uid, "title": title}
+            conversation_data = {
+                "user_id": uid,
+                "title": title,
+                "conversation_type": "research_report",
+            }
             if body.folder_id:
                 conversation_data["folder_id"] = body.folder_id
             convo_res = db.table("conversations").insert(conversation_data).execute()
@@ -2182,7 +2424,11 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
                 try:
                     message_res = db.table("messages").insert(message_to_save).execute()
                     logger.info("Successfully saved assignment brief guidance message")
-                    return {"conversation_id": convo_id, "new_messages": message_res.data}
+                    return {
+                        "conversation_id": convo_id,
+                        "new_messages": message_res.data,
+                        "conversation_type": "research_report",
+                    }
                 except Exception as e:
                     logger.error("Failed to save assignment brief guidance message: %s", e)
                     # Fall through to normal processing if we can't save the guidance message
@@ -2223,6 +2469,7 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
         metadata_json = {}
         if chart_data:
             metadata_json["graph_data"] = chart_data
+        metadata_json["report_type"] = "research_report"
         metadata_json["followup_suggestions"] = followup_suggestions
         metadata_json["sources_used"] = len(sources)
         # Note: facts count not available in optimized pipeline for performance
@@ -2260,7 +2507,8 @@ async def run_research(request: Request, body: ResearchRequest, authorization: A
         return {
             "conversation_id": convo_id, 
             "new_messages": message_res.data,
-            "quota_just_reached": just_reached
+            "quota_just_reached": just_reached,
+            "conversation_type": "research_report",
         }
 
     except HTTPException:
@@ -2371,7 +2619,11 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         )
 
         title = f"Comparison: {article1.get('title', 'Article 1')[:40]} vs {article2.get('title', 'Article 2')[:40]}"
-        conversation_data = {"user_id": uid, "title": title}
+        conversation_data = {
+            "user_id": uid,
+            "title": title,
+            "conversation_type": "article_comparison",
+        }
         if body.folder_id:
             conversation_data["folder_id"] = body.folder_id
 
@@ -2463,13 +2715,300 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         }
         message_res = db.table("messages").insert(message_to_save).execute()
 
-        return {"conversation_id": convo_id, "new_messages": message_res.data}
+        return {
+            "conversation_id": convo_id,
+            "new_messages": message_res.data,
+            "conversation_type": "article_comparison",
+        }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Error in compare_articles: %s", e)
         raise HTTPException(status_code=500, detail="Failed to compare articles")
+
+
+# =============================================================================
+# COMPARISON FOLLOW-UP HELPERS
+# =============================================================================
+_COMPARISON_THEME_HEADER_RE = re.compile(r"^#{2,4}\s*(?:Theme[:\s]+)?(.+?)\s*$", re.MULTILINE)
+
+# Document-scaffold headers we don't want to treat as themes.
+_COMPARISON_SCAFFOLD_HEADERS = {
+    "thematic analysis",
+    "overlapping themes",
+    "overlapping themes (both articles address these)",
+    "themes unique to article 1",
+    "themes unique to article 2",
+    "methodological notes",
+    "quick reference",
+    "research gaps",
+    "how to use this report",
+    "quick comparative overview",
+    "how to use these sources in your paper",
+    "at-a-glance scores",
+    "synthesis",
+    "rules",
+    "output format",
+}
+
+
+def _extract_themes_from_comparison(content: str, limit: int = 6) -> List[str]:
+    """Pull theme/section headers out of the comparison markdown body."""
+    themes: List[str] = []
+    seen = set()
+    for m in _COMPARISON_THEME_HEADER_RE.finditer(content or ""):
+        title = (m.group(1) or "").strip(" #*[]")
+        # Strip trailing "(Article 1 only)" / "(Article 2 only)" labels
+        title = re.sub(r"\s*\((article\s*\d+)?\s*only\)\s*$", "", title, flags=re.IGNORECASE).strip()
+        if not title:
+            continue
+        key = title.lower()
+        if key in _COMPARISON_SCAFFOLD_HEADERS or key in seen:
+            continue
+        seen.add(key)
+        themes.append(title)
+        if len(themes) >= limit:
+            break
+    return themes
+
+
+# Comparison follow-ups 1–3 include clickable suggestion chips; from the 4th onward we omit them.
+_COMPARISON_FOLLOWUP_SUGGESTION_LIMIT = 3
+
+
+def _generate_comparison_followup_suggestions(user_message: str, themes: List[str]) -> List[str]:
+    """Heuristic 2-3 follow-up suggestions tailored to the student's question."""
+    msg = (user_message or "").lower()
+    if themes and "difference" in msg:
+        return [
+            f"Tell me more about the {themes[0]} theme",
+            "Which article should I cite for the strongest argument?",
+            "What's missing from both articles?",
+        ]
+    for theme in themes:
+        if theme.lower() in msg:
+            return [
+                "What are the key differences between the articles?",
+                f"Which article is stronger on {theme}?",
+                "How should I synthesize both sources on this point?",
+            ]
+    return [
+        "What are the main disagreements between these articles?",
+        "Which source is better for my argument?",
+        "What additional sources would I need?",
+    ]
+
+
+@app.post("/comparison-followup")
+@limiter.limit("30/hour")
+async def comparison_followup(
+    request: Request,
+    body: ComparisonFollowupRequest,
+    authorization: Annotated[Optional[str], Header()] = None,
+):
+    """
+    Answer a follow-up question about a previously generated article comparison.
+
+    Uses only the existing comparison content as context (no web search), so the
+    research pipeline is not triggered on comparison follow-ups.
+    """
+    try:
+        user, token = await require_user_and_token(authorization)
+        db = _db_for_access_token(token)
+        if not db:
+            raise HTTPException(status_code=503, detail="Database client not configured.")
+
+        uid = _auth_uid(user)
+
+        convo_res = (
+            db.table("conversations")
+            .select("id, conversation_type")
+            .eq("id", body.conversation_id)
+            .eq("user_id", uid)
+            .execute()
+        )
+        if not convo_res.data:
+            raise HTTPException(status_code=404, detail="Conversation not found or access denied")
+
+        conv_type = (convo_res.data[0] or {}).get("conversation_type") or "research_report"
+        if conv_type != "article_comparison":
+            raise HTTPException(
+                status_code=400,
+                detail="Conversation is not an article comparison.",
+            )
+
+        msgs_res = (
+            db.table("messages")
+            .select("content, metadata")
+            .eq("conversation_id", body.conversation_id)
+            .eq("role", "assistant")
+            .order("created_at")
+            .execute()
+        )
+        comparison_msg = next(
+            (
+                m for m in (msgs_res.data or [])
+                if (m.get("metadata") or {}).get("comparison_type") == "article_comparison"
+            ),
+            None,
+        )
+        if not comparison_msg:
+            raise HTTPException(
+                status_code=404,
+                detail="Original comparison report not found for this conversation.",
+            )
+
+        comp_metadata = comparison_msg.get("metadata") or {}
+        article1_title = comp_metadata.get("article1_title") or "Article 1"
+        article2_title = comp_metadata.get("article2_title") or "Article 2"
+        comparison_content = comparison_msg.get("content") or ""
+
+        system_prompt = (
+            "You help students reason about a previously generated article comparison. "
+            "Use ONLY the comparison content provided; do not search for or invent new "
+            "information. Stay conversational, concise, and practical. Always end your "
+            "answer with a short helpful offer that invites the student to dig deeper."
+        )
+        user_prompt = f"""You previously compared two articles for a student:
+
+**Article 1:** {article1_title}
+**Article 2:** {article2_title}
+
+**Full comparison analysis:**
+{comparison_content}
+
+---
+
+**Student's follow-up question:** "{body.message}"
+
+**HOW TO RESPOND:**
+
+1. **Format**: Conversational, not a formal report
+   - Use bullet points and short bold headers when useful
+   - Keep it concise (2-4 paragraphs max for simple questions; 3-5 bullets is great for direct asks)
+   - Do NOT create numbered top-level sections like "1." or "Section 1"
+
+2. **Answer from the comparison data**:
+   - Reference specific themes or sections from the comparison
+   - Quote relevant passages from either article when helpful
+   - Be specific: "In the overlapping theme on X..." or "Article 1 says..."
+
+3. **If the comparison DOES cover this topic**:
+   - Answer directly and concisely
+   - Pull out the key points
+   - End with: "Want me to explain any of these points in more detail?"
+
+4. **If the comparison DOESN'T cover this topic well**:
+   - DO NOT just say "these sources won't help" or "they won't support your paper"
+   - DO say what they CAN contribute (even if limited)
+   - DO identify what's missing
+   - DO suggest how to fill the gap (search terms, types of sources to look for)
+   - End with: "Want help finding sources to fill this gap?"
+
+5. **Always end with a helpful offer**, e.g.:
+   - "Want me to elaborate on [X]?"
+   - "Should I unpack the [theme] in more detail?"
+   - "Would you like suggestions for additional sources on this?"
+
+**EXAMPLE - Good response to "What about privacy?"**:
+
+Neither article makes privacy its main focus, but here's what you can use:
+
+**What Article 1 Provides:**
+- Brief mention: "AI technologies enable surveillance and data collection"
+- Identifies privacy as a recognized concern category
+- BUT: No specific examples, no technical depth
+
+**What Article 2 Provides:**
+- Doesn't directly address surveillance
+- However, the discussion of algorithmic influence (recommendation systems tracking behavior) relates to data collection
+- The point about unregulated AI applies to privacy too
+
+**What's Missing:**
+You'd need sources specifically on:
+- Facial recognition and surveillance systems
+- Data privacy laws (GDPR, CCPA) vs. AI capabilities
+- Corporate data collection practices
+
+**How to Fill the Gap:**
+Search Google Scholar for: "AI surveillance privacy" or "facial recognition privacy concerns".
+Look for sources from: Electronic Frontier Foundation, AI Now Institute, or legal journals.
+
+Want help finding those sources, or should I explain how Article 1's brief privacy mention connects to your argument?
+
+---
+
+Now answer the student's question: "{body.message}"
+"""
+
+        try:
+            answer = call_claude(
+                system_prompt,
+                user_prompt,
+                max_tokens=1500,
+                temperature=0.5,
+            )
+        except Exception as e:
+            logger.error("Comparison follow-up Claude call failed: %s", e)
+            raise HTTPException(status_code=502, detail="Failed to generate follow-up answer")
+
+        existing_followup_count = sum(
+            1
+            for m in (msgs_res.data or [])
+            if (m.get("metadata") or {}).get("message_type") == "comparison_followup"
+        )
+        themes = _extract_themes_from_comparison(comparison_content)
+        if existing_followup_count >= _COMPARISON_FOLLOWUP_SUGGESTION_LIMIT:
+            suggested_questions = []
+        else:
+            suggested_questions = _generate_comparison_followup_suggestions(
+                body.message, themes
+            )
+
+        db.table("messages").insert({
+            "conversation_id": body.conversation_id,
+            "role": "user",
+            "content": body.message,
+        }).execute()
+
+        assistant_msg = {
+            "conversation_id": body.conversation_id,
+            "role": "assistant",
+            "model_name": "Article Comparison Follow-up",
+            "content": answer,
+            "metadata": {
+                "message_type": "comparison_followup",
+                "followup_type": "comparison",  # kept for backward compatibility
+                "sources_used": 0,
+                "referenced_comparison": True,
+                "article1_title": article1_title,
+                "article2_title": article2_title,
+                "followup_suggestions": suggested_questions,
+            },
+        }
+        message_res = db.table("messages").insert(assistant_msg).execute()
+
+        _insert_usage_event(
+            uid,
+            "comparison_followup_used",
+            {
+                "conversation_id": body.conversation_id,
+                "query_length": len(body.message),
+            },
+        )
+
+        return {
+            "conversation_id": body.conversation_id,
+            "new_messages": message_res.data,
+            "conversation_type": "article_comparison",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error in comparison_followup: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to process comparison follow-up")
 
 
 @app.post("/citation-metadata")

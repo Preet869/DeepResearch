@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ChartDisplay from './ChartDisplay';
 import ComparisonReportDisplay from './ComparisonReportDisplay';
+import ComparisonFollowupDisplay from './comparison/ComparisonFollowupDisplay';
 import CitationHelper from './components/CitationHelper';
 import ResearchGeneratingPanel from './components/ResearchGeneratingPanel';
 import { FrameDivider } from './components/shared';
@@ -14,8 +15,6 @@ const LayeredResearchDisplay = ({
   activeNodeIndex = 0,
   onNodeSelect,
   onAddFollowup,
-  exportSelections,
-  onExportToggle 
 }) => {
   const [copiedSection, setCopiedSection] = useState(null);
   const [currentFollowUpQuery, setCurrentFollowUpQuery] = useState('');
@@ -187,10 +186,27 @@ const LayeredResearchDisplay = ({
   const allUrls = extractUrlsFromMessages(messages);
   const sourceCount = allUrls.length;
 
-  if (mainReport.metadata?.comparison_type === 'article_comparison') {
+  const isComparisonConvo = (messages || []).some(
+    (m) => m?.role === 'assistant' && m?.metadata?.comparison_type === 'article_comparison'
+  );
+
+  if (isComparisonConvo) {
+    if (mainReport.metadata?.message_type === 'comparison_followup') {
+      return (
+        <ComparisonFollowupDisplay
+          message={mainReport}
+          isLoading={isLoading}
+          onFollowUp={(query) => {
+            setCurrentFollowUpQuery(query);
+            onFollowUp && onFollowUp(query);
+          }}
+        />
+      );
+    }
+
     return (
-      <ComparisonReportDisplay 
-        messages={messages} 
+      <ComparisonReportDisplay
+        messages={messages}
         isLoading={isLoading}
         onFollowUp={(query) => {
           setCurrentFollowUpQuery(query);
