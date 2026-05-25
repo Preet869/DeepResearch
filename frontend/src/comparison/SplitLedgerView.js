@@ -707,7 +707,7 @@ function GapCard({ gap }) {
             className="mono"
             style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: 'var(--cyan)' }}
           >
-            To find it
+            How to find it
           </span>
           <MarkdownBody>{gap.toFind}</MarkdownBody>
         </div>
@@ -798,6 +798,7 @@ const SplitLedgerView = ({ parsed, titleA, titleB }) => {
       templates: '',
       quickReference: '',
       gaps: [],
+      gapsGuidance: '',
       citationQuotes: '',
       howToUse: '',
     },
@@ -891,6 +892,30 @@ const SplitLedgerView = ({ parsed, titleA, titleB }) => {
               {safe.gaps.map((g, i) => (
                 <GapCard key={i} gap={g} />
               ))}
+              {safe.gapsGuidance && safe.gapsGuidance.trim() && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    border: '1px solid var(--line-strong)',
+                    background: 'var(--bg)',
+                  }}
+                >
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: '.16em',
+                      textTransform: 'uppercase',
+                      color: 'var(--violet)',
+                    }}
+                  >
+                    How to use these gaps
+                  </span>
+                  <MarkdownBody>{safe.gapsGuidance}</MarkdownBody>
+                </div>
+              )}
             </div>
           </Drawer>
         )}

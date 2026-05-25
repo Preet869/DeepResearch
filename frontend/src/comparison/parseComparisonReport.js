@@ -292,6 +292,8 @@ function parseGaps(lines) {
   let current = null;
   let target = null;
   let buf = { missing: [], toFind: [], sources: [], why: [] };
+  let guidanceLines = [];
+  let inGuidance = false;
 
   const finalize = () => {
     if (current) {
@@ -311,6 +313,19 @@ function parseGaps(lines) {
   for (const line of lines) {
     const trimmed = line.trim();
 
+    const guidanceH2 = trimmed.match(/^##\s+How to Use These Gaps\s*$/i);
+    if (guidanceH2) {
+      finalize();
+      inGuidance = true;
+      target = null;
+      continue;
+    }
+
+    if (inGuidance) {
+      guidanceLines.push(line);
+      continue;
+    }
+
     const h3 = trimmed.match(/^###\s+(.+?)\s*$/);
     if (h3) {
       finalize();
@@ -322,7 +337,7 @@ function parseGaps(lines) {
     let m = trimmed.match(/^\*\*What'?s?\s+missing\*\*\s*:?\s*(.*)$/i);
     if (m) { target = 'missing'; if (m[1]) buf.missing.push(m[1]); continue; }
 
-    m = trimmed.match(/^\*\*To find it\*\*\s*:?\s*(.*)$/i);
+    m = trimmed.match(/^\*\*(?:How to find it|To find it)\*\*\s*:?\s*(.*)$/i);
     if (m) { target = 'toFind'; if (m[1]) buf.toFind.push(m[1]); continue; }
 
     m = trimmed.match(/^\*\*Recommended sources\*\*\s*:?\s*(.*)$/i);
@@ -334,7 +349,10 @@ function parseGaps(lines) {
     if (target && current) buf[target].push(line);
   }
   finalize();
-  return gaps;
+  return {
+    gaps,
+    guidance: guidanceLines.join('\n').trim(),
+  };
 }
 
 export function parseComparisonReport(markdown) {
@@ -347,6 +365,7 @@ export function parseComparisonReport(markdown) {
     templates: '',
     quickReference: '',
     gaps: [],
+    gapsGuidance: '',
     citationQuotes: '',
     howToUse: '',
   };
@@ -374,7 +393,9 @@ export function parseComparisonReport(markdown) {
     } else if (key === 'quickReference') {
       result.quickReference = body;
     } else if (key === 'gaps') {
-      result.gaps = parseGaps(sec.lines);
+      const parsedGaps = parseGaps(sec.lines);
+      result.gaps = parsedGaps.gaps;
+      result.gapsGuidance = parsedGaps.guidance;
     } else if (key === 'citationQuotes') {
       result.citationQuotes = body;
     } else if (key === 'howToUse') {

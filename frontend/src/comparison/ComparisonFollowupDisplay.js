@@ -8,22 +8,12 @@ function shorten(text, max = 48) {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-const ComparisonFollowupDisplay = ({ message, isLoading, onFollowUp }) => {
+const ComparisonFollowupDisplay = ({ message, isLoading }) => {
   if (!message) return null;
 
   const metadata = message.metadata || {};
   const title1 = metadata.article1_title || 'Article 1';
   const title2 = metadata.article2_title || 'Article 2';
-  const suggestions = Array.isArray(metadata.followup_suggestions)
-    ? metadata.followup_suggestions.filter((s) => typeof s === 'string' && s.trim())
-    : [];
-
-  const handleSuggestionClick = (suggestion) => {
-    if (isLoading) return;
-    if (typeof onFollowUp === 'function') {
-      onFollowUp(suggestion);
-    }
-  };
 
   return (
     <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-2">
@@ -73,70 +63,6 @@ const ComparisonFollowupDisplay = ({ message, isLoading, onFollowUp }) => {
         ) : (
           <div className="mono" style={{ fontSize: 13, color: 'var(--mut)' }}>
             Generating follow-up…
-          </div>
-        )}
-
-        {suggestions.length > 0 && (
-          <div
-            style={{
-              marginTop: 28,
-              paddingTop: 20,
-              borderTop: '1px solid var(--line)',
-            }}
-          >
-            <div
-              className="mono"
-              style={{
-                fontSize: 11,
-                color: 'var(--violet)',
-                letterSpacing: '.18em',
-                textTransform: 'uppercase',
-                marginBottom: 12,
-              }}
-            >
-              ↳ you might also ask
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 8,
-              }}
-            >
-              {suggestions.slice(0, 4).map((suggestion, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  disabled={isLoading}
-                  style={{
-                    background: 'var(--card)',
-                    color: 'var(--fg)',
-                    border: '1px solid var(--line-strong)',
-                    borderRadius: 999,
-                    padding: '8px 14px',
-                    fontSize: 13,
-                    lineHeight: 1.3,
-                    cursor: isLoading ? 'not-allowed' : 'pointer',
-                    opacity: isLoading ? 0.6 : 1,
-                    transition: 'background 0.15s ease, border-color 0.15s ease',
-                    textAlign: 'left',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isLoading) {
-                      e.currentTarget.style.background = 'var(--bg-2)';
-                      e.currentTarget.style.borderColor = 'var(--violet)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'var(--card)';
-                    e.currentTarget.style.borderColor = 'var(--line-strong)';
-                  }}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
           </div>
         )}
       </div>

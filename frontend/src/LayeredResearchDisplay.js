@@ -196,10 +196,6 @@ const LayeredResearchDisplay = ({
         <ComparisonFollowupDisplay
           message={mainReport}
           isLoading={isLoading}
-          onFollowUp={(query) => {
-            setCurrentFollowUpQuery(query);
-            onFollowUp && onFollowUp(query);
-          }}
         />
       );
     }
