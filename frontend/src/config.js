@@ -14,6 +14,9 @@ if (process.env.NODE_ENV === 'development') {
 export const BETA_SIGNUP_FULL_MESSAGE =
   'Thank you for your interest! Our beta signup is full. We appreciate your support — please check back later.';
 
+/** Max comparison follow-ups in the timeline (original report + this many follow-ups). */
+export const MAX_COMPARISON_FOLLOWUPS = 3;
+
 export const config = {
   API_BASE_URL,
   endpoints: {

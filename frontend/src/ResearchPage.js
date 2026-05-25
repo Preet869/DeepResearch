@@ -8,7 +8,7 @@ import CitationHelper from './components/CitationHelper';
 import Analytics from './components/Analytics';
 import ResearchLibrary from './components/ResearchLibrary';
 import OnboardingTooltip from './components/OnboardingTooltip';
-import { config } from './config';
+import { config, MAX_COMPARISON_FOLLOWUPS } from './config';
 import { apiFetch, AUTH_REQUIRED, getSupabaseAccessToken } from './apiClient';
 import analyticsService from './services/analyticsService';
 import { Icon, PIPELINE_STEP_DOT_COLORS, pipelineStepDotStyle } from './components/shared';
@@ -1256,7 +1256,7 @@ const ResearchPage = () => {
                   </button>
 
                   {/* Follow-up Slots */}
-                  {[1, 2, 3].map((slot) => (
+                  {Array.from({ length: MAX_COMPARISON_FOLLOWUPS }, (_, i) => i + 1).map((slot) => (
                     <button
                       key={slot}
                       onClick={() => handleFollowUpSlotClick(slot)}

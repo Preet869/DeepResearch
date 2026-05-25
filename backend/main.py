@@ -1106,6 +1106,74 @@ async def _fetch_citation_metadata_for_url(client: httpx.AsyncClient, url: str) 
 # =============================================================================
 # ARTICLE COMPARISON REPORT
 # =============================================================================
+RESEARCH_GAPS_INSTRUCTION = """
+# Research Gaps Section
+
+Generate 4-5 research gaps following this structure for EACH gap:
+
+### Gap [N]: [Title]
+
+**What's missing**: What neither article provides (be specific — 2-3 sentences)
+
+**How to find it**:
+Search [Google Scholar / specific database] for:
+- "exact search query 1"
+- "exact search query 2"
+- "exact search query 3"
+
+**Recommended sources**:
+- [Specific institution/author/conference]
+- [Specific journal or report series]
+- [Specific organization or database]
+
+**Why it matters**: How this improves the student's paper (1-2 sentences)
+
+---
+
+**REQUIRED GAPS TO IDENTIFY** (pick 4-5 that genuinely apply to these articles):
+
+1. **Quantitative/Empirical Data Gap**: If articles lack statistics, experimental results, or measured outcomes
+2. **Policy/Solutions Gap**: If articles identify problems but don't propose regulatory frameworks or interventions
+3. **International/Comparative Gap**: If articles are US/Western-centric, missing global perspectives
+4. **Interdisciplinary Gap**: If articles miss economic, legal, psychological, or other disciplinary angles
+5. **Methodological Gap**: If articles need different research methods (experiments, case studies, longitudinal data)
+
+**SEARCH TERMS MUST BE:**
+- Concrete and specific (not generic)
+- In quote marks to show exact phrase search
+- Listed as bullet points the student can copy-paste into Google Scholar
+- Actionable (student can copy-paste into Google Scholar)
+
+**RECOMMENDED SOURCES MUST BE:**
+- Specific institutions/authors/conferences (not "academic journals")
+- Actually relevant to the gap (verify they publish on this topic)
+- Accessible to students (prefer open-access when possible)
+
+**WHY IT MATTERS MUST:**
+- Connect to paper quality ("makes argument stronger by X")
+- Be practical ("moves from speculation to evidence")
+- Show impact on grade ("demonstrates research depth")
+
+**SECTION LENGTH**: 500-800 words total for the Research Gaps section.
+
+**REFERENCE PATTERNS** (adapt to the actual topic — do NOT copy verbatim unless articles are about AI ethics):
+
+For AI ethics comparisons, common gaps include:
+- Quantitative bias data → search "algorithmic bias discrimination study", "facial recognition accuracy demographics"; sources: Gender Shades (MIT), ProPublica Machine Bias, ACM FAccT papers
+- Regulatory frameworks → search "AI regulation EU Act", "algorithmic accountability policy"; sources: EU AI Act docs, Brookings AI governance, Stanford HAI briefs
+- Global perspectives → search "AI developing countries", "algorithmic bias Global South"; sources: Research ICT Africa, Data & Society decolonial AI work
+- Economic data → search "AI automation employment data", "labor displacement statistics"; sources: McKinsey AI reports, Brookings Metro studies, BLS data
+- Empirical HCI studies → search "LLM use critical thinking study", "chatbot interaction psychological"; sources: CHI conference papers, Computers in Human Behavior journal
+
+For other topics, adjust gaps based on actual article content. Always identify what's genuinely missing (not just "less detailed").
+
+End the Research Gaps section with:
+
+## How to Use These Gaps
+
+[2-3 sentences: pick 2-3 gaps matching the student's assignment angle, paste search queries into Google Scholar, cite new sources to strengthen the literature review and demonstrate research depth]
+"""
+
 ARTICLE_COMPARISON_PROMPT = """You are analyzing two complete academic articles for a student writing a literature review or comparative essay.
 
 YOUR JOB: Help them synthesize these sources into their paper, NOT evaluate source credibility.
@@ -1352,75 +1420,10 @@ Example: "Article A provides a categorical overview of AI concerns for general a
 
 # Research Gaps
 
-### Gap 1: Quantitative Bias Data
+[Generate 4-5 topic-specific gaps tailored to what these two articles actually miss — see Research Gaps rules below]
 
-**What's missing**: Neither article provides comprehensive statistical data on bias prevalence across different AI systems and industries. We get general examples but lack systematic measurements.
-
-**To find it**: Search Google Scholar for "AI bias prevalence statistics" OR "algorithmic discrimination quantitative studies" OR "machine learning fairness metrics evaluation"
-
-**Recommended sources**: 
-- Papers from ACM FAccT Conference (Fairness, Accountability, and Transparency)
-- Reports from AI Now Institute and Partnership on AI
-- Studies from MIT's Computer Science and Artificial Intelligence Laboratory (CSAIL)
-- IEEE publications on algorithmic auditing
-
-**Why it matters**: Hard numbers on bias frequency and severity make your argument more compelling than relying solely on conceptual discussions.
-
-### Gap 2: Regulatory Frameworks and Policy Proposals
-
-**What's missing**: Both articles focus on problems but don't extensively cover existing or proposed regulatory solutions. Missing concrete policy recommendations and their effectiveness.
-
-**To find it**: Search Google Scholar for "AI regulation policy proposals" OR "algorithmic accountability legislation" OR "EU AI Act implementation studies"
-
-**Recommended sources**:
-- Brookings Institution AI governance reports
-- Stanford HAI (Human-Centered AI Institute) policy briefs
-- Papers from Berkeley Center for Long-Term Cybersecurity
-- Government reports from FTC, NIST, or European Commission
-
-**Why it matters**: Shows you understand the solution landscape, not just the problems, making your argument more sophisticated and actionable.
-
-### Gap 3: International/Comparative Perspectives on AI Governance
-
-**What's missing**: Both articles have a primarily US-centric view. Missing how other countries approach AI ethics and what we can learn from different regulatory approaches.
-
-**To find it**: Search Google Scholar for "comparative AI governance international" OR "EU vs US AI regulation differences" OR "China AI ethics policy comparison"
-
-**Recommended sources**:
-- Oxford Internet Institute publications
-- Cambridge Centre for AI in Medicine policy papers
-- Reports from Organisation for Economic Co-operation and Development (OECD)
-- Studies from Singapore's AI Governance initiatives
-
-**Why it matters**: International comparisons strengthen arguments about what regulatory approaches work best and show global scope of the issues.
-
-### Gap 4: Economic Impact Data (Employment Displacement Statistics)
-
-**What's missing**: While both articles mention job displacement concerns, neither provides detailed economic modeling or employment impact statistics across different sectors.
-
-**To find it**: Search Google Scholar for "AI automation employment statistics" OR "machine learning job displacement economics" OR "artificial intelligence labor market impact data"
-
-**Recommended sources**:
-- McKinsey Global Institute employment reports
-- Bureau of Labor Statistics AI impact studies
-- Papers from MIT Work of the Future initiative
-- World Economic Forum Future of Jobs reports
-
-**Why it matters**: Concrete economic data makes abstract concerns about AI impact tangible and helps quantify the scale of challenges discussed.
-
-### Gap 5: Long-term Sociological Studies on AI Interaction Effects
-
-**What's missing**: Both articles discuss current AI interactions but lack longitudinal studies on how prolonged AI use changes human behavior, decision-making, or social relationships over time.
-
-**To find it**: Search Google Scholar for "longitudinal AI human interaction studies" OR "social media algorithm behavior change" OR "human-computer interaction long-term effects"
-
-**Recommended sources**:
-- Papers from CHI Conference (Computer-Human Interaction)
-- Studies from Stanford's Human-Computer Interaction Group
-- Research from University of Washington's Center for an Informed Public
-- Publications from Pew Research Center on technology's social impact
-
-**Why it matters**: Long-term behavioral data helps you argue about future consequences rather than just current observations, making your analysis more forward-looking and comprehensive.
+## How to Use These Gaps
+[2-3 sentences of actionable guidance for the student]
 
 ---
 
@@ -1445,6 +1448,10 @@ Organize by argument type for easy student navigation:
 *Note: Each quote should be citation-ready with proper attribution and represent the strongest, most quotable passages from each article.*
 
 ---
+
+""" + RESEARCH_GAPS_INSTRUCTION + """
+
+**RESEARCH GAPS IS REQUIRED.** Do not end the report until all 4-5 gaps are fully detailed with all four subsections each, plus "How to Use These Gaps" guidance.
 
 **Do NOT include any JSON blocks or raw data in the output. The visual scoring table in the Quick Comparative Overview section provides all the summary information students need.**
 """
@@ -1543,12 +1550,20 @@ Do NOT skip Article 1 content. Extract what it argues even if less technical tha
 Tailor your thematic comparison to help with this specific assignment. Identify which article better supports different positions the student might take.
 """
 
-    user_prompt += "\nGenerate a comprehensive thematic comparison following the framework above."
+    user_prompt += f"""
+Generate a comprehensive thematic comparison following the framework above.
+
+{RESEARCH_GAPS_INSTRUCTION}
+
+CRITICAL: The Research Gaps section must include 4-5 fully detailed gaps before you finish.
+Each gap must have What's missing, How to find it (with quoted search bullets), Recommended sources, and Why it matters.
+End the Research Gaps section with 'How to Use These Gaps' guidance.
+"""
 
     try:
         message = claude_client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=5000,
+            max_tokens=7000,
             temperature=0.3,
             system=ARTICLE_COMPARISON_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
@@ -2728,78 +2743,6 @@ async def compare_articles(request: Request, body: ArticleComparisonRequest, aut
         raise HTTPException(status_code=500, detail="Failed to compare articles")
 
 
-# =============================================================================
-# COMPARISON FOLLOW-UP HELPERS
-# =============================================================================
-_COMPARISON_THEME_HEADER_RE = re.compile(r"^#{2,4}\s*(?:Theme[:\s]+)?(.+?)\s*$", re.MULTILINE)
-
-# Document-scaffold headers we don't want to treat as themes.
-_COMPARISON_SCAFFOLD_HEADERS = {
-    "thematic analysis",
-    "overlapping themes",
-    "overlapping themes (both articles address these)",
-    "themes unique to article 1",
-    "themes unique to article 2",
-    "methodological notes",
-    "quick reference",
-    "research gaps",
-    "how to use this report",
-    "quick comparative overview",
-    "how to use these sources in your paper",
-    "at-a-glance scores",
-    "synthesis",
-    "rules",
-    "output format",
-}
-
-
-def _extract_themes_from_comparison(content: str, limit: int = 6) -> List[str]:
-    """Pull theme/section headers out of the comparison markdown body."""
-    themes: List[str] = []
-    seen = set()
-    for m in _COMPARISON_THEME_HEADER_RE.finditer(content or ""):
-        title = (m.group(1) or "").strip(" #*[]")
-        # Strip trailing "(Article 1 only)" / "(Article 2 only)" labels
-        title = re.sub(r"\s*\((article\s*\d+)?\s*only\)\s*$", "", title, flags=re.IGNORECASE).strip()
-        if not title:
-            continue
-        key = title.lower()
-        if key in _COMPARISON_SCAFFOLD_HEADERS or key in seen:
-            continue
-        seen.add(key)
-        themes.append(title)
-        if len(themes) >= limit:
-            break
-    return themes
-
-
-# Comparison follow-ups 1–3 include clickable suggestion chips; from the 4th onward we omit them.
-_COMPARISON_FOLLOWUP_SUGGESTION_LIMIT = 3
-
-
-def _generate_comparison_followup_suggestions(user_message: str, themes: List[str]) -> List[str]:
-    """Heuristic 2-3 follow-up suggestions tailored to the student's question."""
-    msg = (user_message or "").lower()
-    if themes and "difference" in msg:
-        return [
-            f"Tell me more about the {themes[0]} theme",
-            "Which article should I cite for the strongest argument?",
-            "What's missing from both articles?",
-        ]
-    for theme in themes:
-        if theme.lower() in msg:
-            return [
-                "What are the key differences between the articles?",
-                f"Which article is stronger on {theme}?",
-                "How should I synthesize both sources on this point?",
-            ]
-    return [
-        "What are the main disagreements between these articles?",
-        "Which source is better for my argument?",
-        "What additional sources would I need?",
-    ]
-
-
 @app.post("/comparison-followup")
 @limiter.limit("30/hour")
 async def comparison_followup(
@@ -2953,19 +2896,6 @@ Now answer the student's question: "{body.message}"
             logger.error("Comparison follow-up Claude call failed: %s", e)
             raise HTTPException(status_code=502, detail="Failed to generate follow-up answer")
 
-        existing_followup_count = sum(
-            1
-            for m in (msgs_res.data or [])
-            if (m.get("metadata") or {}).get("message_type") == "comparison_followup"
-        )
-        themes = _extract_themes_from_comparison(comparison_content)
-        if existing_followup_count >= _COMPARISON_FOLLOWUP_SUGGESTION_LIMIT:
-            suggested_questions = []
-        else:
-            suggested_questions = _generate_comparison_followup_suggestions(
-                body.message, themes
-            )
-
         db.table("messages").insert({
             "conversation_id": body.conversation_id,
             "role": "user",
@@ -2984,7 +2914,6 @@ Now answer the student's question: "{body.message}"
                 "referenced_comparison": True,
                 "article1_title": article1_title,
                 "article2_title": article2_title,
-                "followup_suggestions": suggested_questions,
             },
         }
         message_res = db.table("messages").insert(assistant_msg).execute()
