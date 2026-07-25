@@ -6,6 +6,9 @@ DeepResearch transforms any research question into a comprehensive academic repo
 
 ![DeepResearch Dashboard](https://img.shields.io/badge/Status-Active-brightgreen) ![React](https://img.shields.io/badge/React-18.3.1-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-green) ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-purple)
 
+
+
+
 ## 🎯 What DeepResearch Does
 
 ### **1. AI Research Reports**
